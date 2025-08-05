@@ -110,13 +110,14 @@ pr: ## Run all checks that are run in CI for pull requests
 	@echo "3. Running clippy..."
 	cargo +nightly clippy --all-targets --all-features -- -D warnings
 	@echo "4. Running security audit..."
-	cargo deny check
+	cargo deny check >/dev/null 2>&1
 	@echo "5. Checking unused dependencies..."
-	cargo +nightly udeps --all-features --locked
+	cargo machete
 	@echo "6. Building documentation..."
 	RUSTDOCFLAGS="-D warnings" cargo doc --all --no-deps --document-private-items
 	@echo "7. Running tests..."
-	cargo test --all --locked --verbose
+	@command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest --locked
+	cargo nextest run --locked
 	@echo "All PR checks passed! ✅"
 
 .PHONY: pr-fix
@@ -134,8 +135,9 @@ pr-fix: ## Auto-fix formatting issues
 COV_FILE := lcov.info
 
 .PHONY: test
-test: ## Run all tests
-	cargo test --all --locked --verbose
+test: ## Run unit tests with nextest
+	@command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest --locked
+	cargo nextest run --locked
 
 .PHONY: cov-unit
 cov-unit: ## Run unit tests with coverage using cargo-llvm-cov
