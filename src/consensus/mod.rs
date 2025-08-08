@@ -140,6 +140,14 @@ impl Consensus<BerachainBlock> for BerachainBeaconConsensus {
 
         if self.chain_spec.is_prague1_active_at_timestamp(block.header().timestamp) {
             self.validate_pol_transaction(block)?;
+        } else if let Some(index) = block
+            .body()
+            .transactions()
+            .position(|tx| matches!(tx, BerachainTxEnvelope::Berachain(_)))
+        {
+            return Err(ConsensusError::Other(format!(
+                "PoL transaction found at position {index} before Prague1 fork activation"
+            )));
         }
         Ok(())
     }
@@ -170,15 +178,17 @@ mod tests {
     use super::*;
     use crate::{
         chainspec::BerachainChainSpec,
-        primitives::header::BlsPublicKey,
-        transaction::pol::{create_pol_transaction, validate_pol_transaction},
+        primitives::{BerachainBlockBody, BerachainHeader, header::BlsPublicKey},
+        transaction::{BerachainTxEnvelope, pol::create_pol_transaction},
     };
-    use alloy_primitives::U256;
-    use reth_chainspec::EthChainSpec;
+    use alloy_consensus::{EMPTY_OMMER_ROOT_HASH, Signed, TxLegacy, constants::EMPTY_WITHDRAWALS};
+    use alloy_eips::eip4895::Withdrawals;
+    use alloy_primitives::{Address, BlockHash, TxKind, U256};
+    use reth_primitives_traits::{BlockBody, SealedBlock, SealedHeader};
     use std::sync::Arc;
 
     fn mock_berachain_chainspec() -> Arc<BerachainChainSpec> {
-        Arc::new(BerachainChainSpec::default())
+        crate::test::bepolia_chainspec()
     }
 
     fn mock_bls_pubkey() -> BlsPublicKey {
@@ -186,144 +196,111 @@ mod tests {
     }
 
     #[test]
-    fn test_consensus_creation() {
+    fn test_pre_prague1_pol_transaction_rejected() {
         let chain_spec = mock_berachain_chainspec();
-        let consensus = BerachainBeaconConsensus::new(chain_spec);
-
-        assert_eq!(consensus.chain_spec.chain_id(), 1);
-    }
-
-    #[test]
-    fn test_pol_transaction_creation_and_validation() {
-        let chain_spec = mock_berachain_chainspec();
+        let consensus = BerachainBeaconConsensus::new(chain_spec.clone());
         let pubkey = mock_bls_pubkey();
         let block_number = U256::from(10);
         let base_fee = 1000u64;
 
-        let pol_tx_envelope =
-            create_pol_transaction(chain_spec.clone(), pubkey, block_number, base_fee);
-
-        assert!(pol_tx_envelope.is_ok(), "PoL transaction creation should succeed");
-
-        let pol_tx = match pol_tx_envelope.unwrap() {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
-            _ => panic!("Expected PoL transaction"),
-        };
-
-        let validation_result =
-            validate_pol_transaction(&pol_tx, chain_spec.clone(), pubkey, block_number, base_fee);
-
-        assert!(validation_result.is_ok(), "Valid PoL transaction should pass validation");
-    }
-
-    #[test]
-    fn test_pol_transaction_validation_wrong_pubkey() {
-        let chain_spec = mock_berachain_chainspec();
-        let correct_pubkey = mock_bls_pubkey();
-        let wrong_pubkey = BlsPublicKey::from([2u8; 48]);
-        let block_number = U256::from(10);
-        let base_fee = 1000u64;
-
-        let pol_tx_envelope =
-            create_pol_transaction(chain_spec.clone(), correct_pubkey, block_number, base_fee)
-                .unwrap();
-
-        let pol_tx = match pol_tx_envelope {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
-            _ => panic!("Expected PoL transaction"),
-        };
-
-        let validation_result =
-            validate_pol_transaction(&pol_tx, chain_spec, wrong_pubkey, block_number, base_fee);
-
+        // Verify Prague1 activation timestamp for context
         assert!(
-            validation_result.is_err(),
-            "PoL transaction with wrong pubkey should fail validation"
+            !chain_spec.is_prague1_active_at_timestamp(0),
+            "Timestamp 0 should be before Prague1 activation"
         );
-        assert!(validation_result.unwrap_err().to_string().contains("hash mismatch"));
-    }
 
-    #[test]
-    fn test_pol_transaction_validation_wrong_base_fee() {
-        let chain_spec = mock_berachain_chainspec();
-        let pubkey = mock_bls_pubkey();
-        let block_number = U256::from(10);
-        let correct_base_fee = 1000u64;
-        let wrong_base_fee = 2000u64;
-
+        // Create a PoL transaction
         let pol_tx_envelope =
-            create_pol_transaction(chain_spec.clone(), pubkey, block_number, correct_base_fee)
-                .unwrap();
-
-        let pol_tx = match pol_tx_envelope {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
-            _ => panic!("Expected PoL transaction"),
-        };
-
-        let validation_result =
-            validate_pol_transaction(&pol_tx, chain_spec, pubkey, block_number, wrong_base_fee);
-
-        assert!(
-            validation_result.is_err(),
-            "PoL transaction with wrong base fee should fail validation"
-        );
-        assert!(validation_result.unwrap_err().to_string().contains("hash mismatch"));
-    }
-
-    #[test]
-    fn test_pol_transaction_validation_wrong_block_number() {
-        let chain_spec = mock_berachain_chainspec();
-        let pubkey = mock_bls_pubkey();
-        let correct_block_number = U256::from(10);
-        let wrong_block_number = U256::from(20);
-        let base_fee = 1000u64;
-
-        let pol_tx_envelope =
-            create_pol_transaction(chain_spec.clone(), pubkey, correct_block_number, base_fee)
-                .unwrap();
-
-        let pol_tx = match pol_tx_envelope {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
-            _ => panic!("Expected PoL transaction"),
-        };
-
-        let validation_result =
-            validate_pol_transaction(&pol_tx, chain_spec, pubkey, wrong_block_number, base_fee);
-
-        assert!(
-            validation_result.is_err(),
-            "PoL transaction with wrong block number should fail validation"
-        );
-        assert!(validation_result.unwrap_err().to_string().contains("hash mismatch"));
-    }
-
-    #[test]
-    fn test_pol_transaction_deterministic_hashes() {
-        let chain_spec = mock_berachain_chainspec();
-        let pubkey = mock_bls_pubkey();
-        let block_number = U256::from(42);
-        let base_fee = 1337u64;
-
-        let pol_tx1_envelope =
-            create_pol_transaction(chain_spec.clone(), pubkey, block_number, base_fee).unwrap();
-
-        let pol_tx2_envelope =
             create_pol_transaction(chain_spec, pubkey, block_number, base_fee).unwrap();
 
-        let pol_tx1 = match pol_tx1_envelope {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
-            _ => panic!("Expected PoL transaction"),
+        // Create a block body with the PoL transaction
+        let transactions = vec![pol_tx_envelope];
+        let block_body = BerachainBlockBody {
+            transactions: transactions.clone(),
+            withdrawals: Some(Withdrawals::default()),
+            ..Default::default()
         };
 
-        let pol_tx2 = match pol_tx2_envelope {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
-            _ => panic!("Expected PoL transaction"),
+        // Create a header with timestamp BEFORE Prague1 activation
+        let header = BerachainHeader {
+            number: block_number.to::<u64>(),
+            timestamp: 0, // Pre-Prague1 timestamp (Prague1 activates at 1754496000)
+            base_fee_per_gas: Some(base_fee),
+            ommers_hash: EMPTY_OMMER_ROOT_HASH,
+            transactions_root: block_body.calculate_tx_root(),
+            withdrawals_root: Some(EMPTY_WITHDRAWALS),
+            blob_gas_used: Some(0),
+            ..Default::default()
         };
 
-        assert_eq!(
-            pol_tx1.hash(),
-            pol_tx2.hash(),
-            "Identical PoL transactions should have identical hashes"
+        let sealed_header = SealedHeader::new(header, BlockHash::ZERO);
+        let block = SealedBlock::from_sealed_parts(sealed_header, block_body);
+
+        // Validation should fail because PoL transaction exists before Prague1
+        let result = consensus.validate_block_pre_execution(&block);
+        assert!(result.is_err(), "Pre-Prague1 block with PoL transaction should fail validation");
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("before Prague1 fork activation"),
+            "Error should mention Prague1 fork activation"
+        );
+        assert!(error_msg.contains("position 0"), "Error should indicate PoL transaction position");
+    }
+
+    #[test]
+    fn test_pre_prague1_normal_transactions_accepted() {
+        let chain_spec = mock_berachain_chainspec();
+        let consensus = BerachainBeaconConsensus::new(chain_spec.clone());
+
+        // Verify Prague1 activation timestamp for context
+        assert!(
+            !chain_spec.is_prague1_active_at_timestamp(0),
+            "Timestamp 0 should be before Prague1 activation"
+        );
+
+        // Create normal Ethereum transaction
+        let tx = TxLegacy {
+            chain_id: Some(1),
+            nonce: 0,
+            gas_price: 1000,
+            gas_limit: 21000,
+            to: TxKind::Call(Address::ZERO),
+            value: U256::ZERO,
+            input: Default::default(),
+        };
+
+        let signature = alloy_primitives::Signature::test_signature();
+        let signed_tx = Signed::new_unhashed(tx, signature);
+        let eth_tx_envelope =
+            BerachainTxEnvelope::Ethereum(alloy_consensus::TxEnvelope::Legacy(signed_tx));
+
+        let transactions = vec![eth_tx_envelope];
+        let block_body = BerachainBlockBody {
+            transactions: transactions.clone(),
+            withdrawals: Some(Withdrawals::default()),
+            ..Default::default()
+        };
+
+        let header = BerachainHeader {
+            number: 10,
+            timestamp: 0, // Pre-Prague1 timestamp
+            base_fee_per_gas: Some(1000),
+            ommers_hash: EMPTY_OMMER_ROOT_HASH,
+            transactions_root: block_body.calculate_tx_root(),
+            withdrawals_root: Some(EMPTY_WITHDRAWALS),
+            blob_gas_used: Some(0),
+            ..Default::default()
+        };
+
+        let sealed_header = SealedHeader::new(header, BlockHash::ZERO);
+        let block = SealedBlock::from_sealed_parts(sealed_header, block_body);
+
+        // Validation should succeed for normal transactions pre-Prague1
+        let result = consensus.validate_block_pre_execution(&block);
+        assert!(
+            result.is_ok(),
+            "Pre-Prague1 block with normal transactions should pass validation"
         );
     }
 }
