@@ -14,4 +14,4 @@ pub mod rpc;
 pub mod transaction;
 
 #[cfg(test)]
-pub mod test;
+pub mod test_utils;

@@ -84,11 +84,8 @@ pub fn validate_pol_transaction(
 mod tests {
     use super::*;
     use alloy_primitives::U256;
-    use std::sync::Arc;
 
-    fn mock_berachain_chainspec() -> Arc<BerachainChainSpec> {
-        crate::test::bepolia_chainspec()
-    }
+    use crate::test_utils::bepolia_chainspec;
 
     fn mock_bls_pubkey() -> BlsPublicKey {
         BlsPublicKey::from([1u8; 48])
@@ -96,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_pol_transaction_creation_and_validation() {
-        let chain_spec = mock_berachain_chainspec();
+        let chain_spec = bepolia_chainspec();
         let pubkey = mock_bls_pubkey();
         let block_number = U256::from(10);
         let base_fee = 1000u64;
@@ -107,7 +104,7 @@ mod tests {
         assert!(pol_tx_envelope.is_ok(), "PoL transaction creation should succeed");
 
         let pol_tx = match pol_tx_envelope.unwrap() {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
+            BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
             _ => panic!("Expected PoL transaction"),
         };
 
@@ -119,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_pol_transaction_validation_wrong_pubkey() {
-        let chain_spec = mock_berachain_chainspec();
+        let chain_spec = bepolia_chainspec();
         let correct_pubkey = mock_bls_pubkey();
         let wrong_pubkey = BlsPublicKey::from([2u8; 48]);
         let block_number = U256::from(10);
@@ -130,7 +127,7 @@ mod tests {
                 .unwrap();
 
         let pol_tx = match pol_tx_envelope {
-            crate::transaction::BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
+            BerachainTxEnvelope::Berachain(sealed_tx) => sealed_tx,
             _ => panic!("Expected PoL transaction"),
         };
 
@@ -146,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_pol_transaction_validation_wrong_base_fee() {
-        let chain_spec = mock_berachain_chainspec();
+        let chain_spec = bepolia_chainspec();
         let pubkey = mock_bls_pubkey();
         let block_number = U256::from(10);
         let correct_base_fee = 1000u64;
@@ -173,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_pol_transaction_validation_wrong_block_number() {
-        let chain_spec = mock_berachain_chainspec();
+        let chain_spec = bepolia_chainspec();
         let pubkey = mock_bls_pubkey();
         let correct_block_number = U256::from(10);
         let wrong_block_number = U256::from(20);
@@ -200,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_pol_transaction_deterministic_hashes() {
-        let chain_spec = mock_berachain_chainspec();
+        let chain_spec = bepolia_chainspec();
         let pubkey = mock_bls_pubkey();
         let block_number = U256::from(42);
         let base_fee = 1337u64;
