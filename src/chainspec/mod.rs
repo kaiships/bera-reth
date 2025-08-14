@@ -195,13 +195,36 @@ impl ChainSpecParser for BerachainChainSpecParser {
     }
 }
 
+impl BerachainChainSpec {
+    /// Create a BerachainChainSpec that fallbacks to Ethereum behavior
+    fn ethereum_fallback(genesis: Genesis) -> Self {
+        let inner = ChainSpec::from(genesis);
+        let genesis_header = BerachainHeader::from(inner.genesis_header());
+        Self {
+            inner,
+            genesis_header,
+            pol_contract_address: Address::ZERO,
+            prague1_minimum_base_fee: 0,
+        }
+    }
+}
+
 impl From<Genesis> for BerachainChainSpec {
     /// Intentionally panics if required fields are missing from genesis or invalid.
     fn from(genesis: Genesis) -> Self {
         let berachain_genesis_config =
             BerachainGenesisConfig::try_from(&genesis.config.extra_fields).unwrap_or_else(|e| {
-                panic!("Failed to parse berachain genesis config: {e}. Please ensure the genesis file contains a valid 'berachain' configuration section with Prague1 settings");
+                panic!("Failed to parse berachain genesis config: {e}. Please ensure the genesis file contains a valid 'berachain' configuration section");
             });
+
+        // If not a berachain genesis, fallback to Ethereum behavior
+        if !berachain_genesis_config.is_berachain() {
+            return Self::ethereum_fallback(genesis);
+        }
+
+        let prague1_config = berachain_genesis_config
+            .prague1
+            .expect("Prague1 should be Some since is_berachain() was true");
 
         // Berachain networks must start with Cancun at genesis
         if genesis.config.cancun_time != Some(0) {
@@ -251,7 +274,7 @@ impl From<Genesis> for BerachainChainSpec {
         }
 
         // Validate Prague1 comes after Prague if both are configured
-        match (genesis.config.prague_time, berachain_genesis_config.prague1.time) {
+        match (genesis.config.prague_time, prague1_config.time) {
             (Some(prague_time), prague1_time) if prague1_time < prague_time => {
                 panic!(
                     "Prague1 hardfork must activate at or after Prague hardfork. Prague time: {prague_time}, Prague1 time: {prague1_time}. Check that Prague1 time is not malformed (should be a valid Unix timestamp).",
@@ -308,7 +331,7 @@ impl From<Genesis> for BerachainChainSpec {
 
         hardforks.push((
             BerachainHardfork::Prague1.boxed(),
-            ForkCondition::Timestamp(berachain_genesis_config.prague1.time),
+            ForkCondition::Timestamp(prague1_config.time),
         ));
 
         if let Some(osaka_time) = genesis.config.osaka_time {
@@ -337,12 +360,10 @@ impl From<Genesis> for BerachainChainSpec {
         let hardforks = ChainHardforks::new(hardforks);
 
         // Create base fee parameters based on Prague1 configuration
-        let base_fee_params = if berachain_genesis_config.prague1.time == 0 {
+        let base_fee_params = if prague1_config.time == 0 {
             // Prague1 active at genesis - use constant params with Berachain's denominator
             BaseFeeParamsKind::Constant(BaseFeeParams {
-                max_change_denominator: berachain_genesis_config
-                    .prague1
-                    .base_fee_change_denominator,
+                max_change_denominator: prague1_config.base_fee_change_denominator,
                 elasticity_multiplier: 2, // Standard Ethereum value
             })
         } else {
@@ -360,9 +381,7 @@ impl From<Genesis> for BerachainChainSpec {
                 (
                     BerachainHardfork::Prague1.boxed(),
                     BaseFeeParams {
-                        max_change_denominator: berachain_genesis_config
-                            .prague1
-                            .base_fee_change_denominator,
+                        max_change_denominator: prague1_config.base_fee_change_denominator,
                         elasticity_multiplier: 2,
                     },
                 ),
@@ -385,15 +404,15 @@ impl From<Genesis> for BerachainChainSpec {
         let mut genesis_header = BerachainHeader::from(inner.genesis_header());
 
         // Set prev_proposer_pubkey to zero if Prague1 is active at genesis timestamp
-        let is_prague1_at_genesis = berachain_genesis_config.prague1.time <= genesis.timestamp;
+        let is_prague1_at_genesis = prague1_config.time <= genesis.timestamp;
         if is_prague1_at_genesis {
             genesis_header.prev_proposer_pubkey = Some(BlsPublicKey::ZERO);
         }
         Self {
             inner,
             genesis_header,
-            pol_contract_address: berachain_genesis_config.prague1.pol_distributor_address,
-            prague1_minimum_base_fee: berachain_genesis_config.prague1.minimum_base_fee_wei,
+            pol_contract_address: prague1_config.pol_distributor_address,
+            prague1_minimum_base_fee: prague1_config.minimum_base_fee_wei,
         }
     }
 }
@@ -402,14 +421,12 @@ impl From<Genesis> for BerachainChainSpec {
 mod tests {
     use super::*;
     use alloy_genesis::Genesis;
+    use alloy_primitives::address;
     use jsonrpsee_core::__reexports::serde_json::json;
 
     #[test]
-    fn test_chain_spec_default() {
+    fn test_deposit_contract_default_regression() {
         let chain_spec = BerachainChainSpec::default();
-
-        // Test that default creates a valid chain spec
-        assert_eq!(chain_spec.prune_delete_limit(), 20000);
         assert!(chain_spec.deposit_contract().is_none());
     }
 
@@ -583,16 +600,21 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Failed to parse berachain genesis config")]
     fn test_base_fee_params_missing_berachain_config() {
-        // Test panic when berachain config is missing
+        // Test fallback to Ethereum behavior when berachain config is missing
         let mut genesis = Genesis::default();
         genesis.config.london_block = Some(0);
         genesis.config.cancun_time = Some(0); // Required for Berachain
         genesis.config.terminal_total_difficulty = Some(U256::ZERO); // Required for Berachain
-        // No berachain config in extra_fields - should panic
+        // No berachain config in extra_fields - should fallback to Ethereum behavior
 
-        let _chain_spec = BerachainChainSpec::from(genesis);
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Should have default values for Berachain-specific fields
+        assert_eq!(chain_spec.pol_contract_address, Address::ZERO);
+        assert_eq!(chain_spec.prague1_minimum_base_fee, 0);
+        assert!(!chain_spec.is_prague1_active_at_timestamp(0));
+        assert!(!chain_spec.is_prague1_active_at_timestamp(u64::MAX));
     }
 
     #[test]
@@ -961,5 +983,138 @@ mod tests {
 
         let result = chain_spec.next_block_base_fee(&parent_header, 0);
         assert!(result.is_none()); // Correctly returns None when parent has no base fee
+    }
+
+    #[test]
+    fn test_prague1_not_enabled_empty_berachain() {
+        // Prague1 not enabled - berachain present but empty (no prague1)
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {}
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Should fallback to Ethereum behavior
+        assert_eq!(chain_spec.pol_contract_address, Address::ZERO);
+        assert_eq!(chain_spec.prague1_minimum_base_fee, 0);
+        assert!(!chain_spec.is_prague1_active_at_timestamp(u64::MAX));
+    }
+
+    #[test]
+    fn test_prague1_empty_should_panic() {
+        // Prague1 present but empty - should panic
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {}
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+
+        // This should panic because prague1 is present but empty/misconfigured
+        std::panic::catch_unwind(|| {
+            let _chain_spec = BerachainChainSpec::from(genesis);
+        })
+        .expect_err("Should panic when prague1 is present but empty");
+    }
+
+    #[test]
+    fn test_prague1_missing_fields_should_panic() {
+        // Prague1 present but missing required fields - should panic
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000
+                    // Missing polDistributorAddress - should panic
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+
+        // This should panic because prague1 is present but misconfigured
+        std::panic::catch_unwind(|| {
+            let _chain_spec = BerachainChainSpec::from(genesis);
+        })
+        .expect_err("Should panic when prague1 is misconfigured");
+    }
+
+    #[test]
+    fn test_prague1_not_enabled_no_berachain_field() {
+        // Prague1 not enabled - no berachain field at all (already covered by existing test)
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        // No berachain config in extra_fields
+
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Should fallback to Ethereum behavior
+        assert_eq!(chain_spec.pol_contract_address, Address::ZERO);
+        assert_eq!(chain_spec.prague1_minimum_base_fee, 0);
+        assert!(!chain_spec.is_prague1_active_at_timestamp(u64::MAX));
+    }
+
+    #[test]
+    fn test_prague1_enabled_at_genesis_valid_config() {
+        // Prague1 enabled at genesis with valid configuration
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 10000000000u64,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Should use Berachain configuration
+        assert_eq!(
+            chain_spec.pol_contract_address,
+            address!("0x4200000000000000000000000000000000000042")
+        );
+        assert_eq!(chain_spec.prague1_minimum_base_fee, 10000000000);
+    }
+
+    #[test]
+    fn test_bepolia_fixture() {
+        let bepolia_path =
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/bepolia-genesis.json");
+        let bepolia_json = std::fs::read_to_string(bepolia_path).unwrap();
+        let genesis: Genesis = serde_json::from_str(&bepolia_json).unwrap();
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Verify Berachain-specific configuration from bepolia fixture
+        assert_eq!(
+            chain_spec.pol_contract_address,
+            address!("D2f19a79b026Fb636A7c300bF5947df113940761")
+        );
+        assert_eq!(chain_spec.prague1_minimum_base_fee, 10_000_000_000); // 10 gwei
+        assert_eq!(chain_spec.inner.chain.id(), 80069); // bepolia chain id
+
+        // Prague1 should be active after timestamp 1754496000
+        assert!(!chain_spec.is_prague1_active_at_timestamp(1754495999));
+        assert!(chain_spec.is_prague1_active_at_timestamp(1754496000));
     }
 }
