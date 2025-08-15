@@ -69,6 +69,14 @@ docker-build-push-amd64: ## Build and push AMD64 Docker image
 docker-build-push-arm64: ## Build and push ARM64 Docker image
 	$(call docker_build_push_arch,linux/arm64,$(GIT_TAG),arm64)
 
+.PHONY: docker-build-local-amd64
+docker-build-local-amd64: ## Build AMD64 Docker image locally (no push)
+	$(call docker_build_local_arch,linux/amd64,$(GIT_TAG),amd64)
+
+.PHONY: docker-build-local-arm64
+docker-build-local-arm64: ## Build ARM64 Docker image locally (no push)
+	$(call docker_build_local_arch,linux/arm64,$(GIT_TAG),arm64)
+
 .PHONY: docker-manifest-create
 docker-manifest-create: ## Create and push multi-arch manifest
 	$(call docker_create_manifest,$(GIT_TAG),$(GIT_TAG))
@@ -102,6 +110,19 @@ define docker_build_push_arch
 		--build-arg FEATURES="$(FEATURES)" \
 		--provenance=false \
 		--push
+endef
+
+# Build a single architecture Docker image locally (no push)
+define docker_build_local_arch
+	docker buildx build --file ./Dockerfile . \
+		--platform $(1) \
+		--tag $(DOCKER_IMAGE_NAME):$(2)-$(3) \
+		--build-arg COMMIT=$(GIT_SHA) \
+		--build-arg VERSION=$(GIT_TAG) \
+		--build-arg BUILD_PROFILE=$(PROFILE) \
+		--build-arg FEATURES="$(FEATURES)" \
+		--provenance=false \
+		--output=type=image
 endef
 
 # Create and push a multi-arch manifest

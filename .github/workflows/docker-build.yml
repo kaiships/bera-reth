@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: 'release'
+      dry-run:
+        description: 'Dry run mode (build but do not push)'
+        required: false
+        type: boolean
+        default: false
 
 env:
   IMAGE_NAME: ${{ github.repository_owner }}/bera-reth
@@ -41,7 +46,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push AMD64 Docker image
-        run: DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make docker-build-push-amd64
+        run: |
+          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+            echo "Dry run mode - building without pushing"
+            DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make docker-build-local-amd64
+          else
+            DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make docker-build-push-amd64
+          fi
 
   docker-build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -65,11 +76,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ARM64 Docker image
-        run: DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make docker-build-push-arm64
+        run: |
+          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+            echo "Dry run mode - building without pushing"
+            DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make docker-build-local-arm64
+          else
+            DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make docker-build-push-arm64
+          fi
 
   docker-manifest:
     needs: [docker-build-amd64, docker-build-arm64]
     runs-on: ubuntu-latest
+    if: inputs.dry-run != true
     permissions:
       contents: read
       packages: write
