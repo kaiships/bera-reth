@@ -60,6 +60,23 @@ docker-build-push-nightly: ## Build and push cross-arch Docker image tagged with
 docker-build-push-nightly-profiling: ## Build and push cross-arch Docker image with profiling profile tagged with nightly-profiling.
 	$(call docker_build_push,nightly-profiling,nightly-profiling)
 
+# Architecture-specific build targets
+.PHONY: docker-build-push-amd64
+docker-build-push-amd64: ## Build and push AMD64 Docker image
+	$(call docker_build_push_arch,linux/amd64,$(GIT_TAG),amd64)
+
+.PHONY: docker-build-push-arm64
+docker-build-push-arm64: ## Build and push ARM64 Docker image
+	$(call docker_build_push_arch,linux/arm64,$(GIT_TAG),arm64)
+
+.PHONY: docker-manifest-create
+docker-manifest-create: ## Create and push multi-arch manifest
+	$(call docker_create_manifest,$(GIT_TAG),$(GIT_TAG))
+
+.PHONY: docker-manifest-create-latest
+docker-manifest-create-latest: ## Create and push multi-arch manifest with latest tag
+	$(call docker_create_manifest,$(GIT_TAG),latest)
+
 # Create a cross-arch Docker image with the given tags and push it
 define docker_build_push
 	docker buildx build --file ./Dockerfile . \
@@ -72,6 +89,28 @@ define docker_build_push
 		--build-arg FEATURES="$(FEATURES)" \
 		--provenance=false \
 		--push
+endef
+
+# Build and push a single architecture Docker image
+define docker_build_push_arch
+	docker buildx build --file ./Dockerfile . \
+		--platform $(1) \
+		--tag $(DOCKER_IMAGE_NAME):$(2)-$(3) \
+		--build-arg COMMIT=$(GIT_SHA) \
+		--build-arg VERSION=$(GIT_TAG) \
+		--build-arg BUILD_PROFILE=$(PROFILE) \
+		--build-arg FEATURES="$(FEATURES)" \
+		--provenance=false \
+		--push
+endef
+
+# Create and push a multi-arch manifest
+define docker_create_manifest
+	docker buildx imagetools create \
+		--tag $(DOCKER_IMAGE_NAME):$(1) \
+		--tag $(DOCKER_IMAGE_NAME):$(2) \
+		$(DOCKER_IMAGE_NAME):$(1)-amd64 \
+		$(DOCKER_IMAGE_NAME):$(1)-arm64
 endef
 
 # Local build targets for development
