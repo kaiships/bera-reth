@@ -390,6 +390,7 @@ where
     }
 
     async fn new_payload_v2(&self, payload: ExecutionPayloadInputV2) -> RpcResult<PayloadStatus> {
+        panic!("delete me");
         trace!(target: "rpc::engine", "Serving engine_newPayloadV2");
         let berachain_payload = BerachainExecutionData::from(payload);
         Ok(self.inner.new_payload_v2_metered(berachain_payload).await?)
@@ -401,6 +402,7 @@ where
         versioned_hashes: Vec<B256>,
         parent_beacon_block_root: B256,
     ) -> RpcResult<PayloadStatus> {
+        panic!("delete me");
         trace!(target: "rpc::engine", "Serving engine_newPayloadV3");
         let berachain_payload = BerachainExecutionData::new(
             payload.into(),
@@ -419,6 +421,7 @@ where
         parent_beacon_block_root: B256,
         execution_requests: RequestsOrHash,
     ) -> RpcResult<PayloadStatus> {
+        panic!("delete me");
         trace!(target: "rpc::engine", "Serving engine_newPayloadV4");
 
         // Accept requests as a hash only if it is explicitly allowed
