@@ -15,6 +15,7 @@ pub type BlsPublicKey = FixedBytes<48>;
 
 /// Berachain block header with additional fields for consensus
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary"), derive(::arbitrary::Arbitrary))]
 #[serde(rename_all = "camelCase")]
 pub struct BerachainHeader {
     /// The Keccak 256-bit hash of the parent block's header, in its entirety.
