@@ -484,6 +484,7 @@ impl BerachainHeader {
 /// The pattern is used because some field types (like B64) cannot derive Compact directly,
 /// so we create an internal struct with compatible types (u64 for nonce) and bridge between them.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Compact, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
 struct CompactBerachainHeader {
     parent_hash: B256,
     ommers_hash: B256,
@@ -509,6 +510,7 @@ struct CompactBerachainHeader {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Compact, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
 pub(crate) struct BerachainHeaderExt {
     requests_hash: Option<B256>,
     prev_proposer_pubkey: Option<BlsPublicKey>,

@@ -13,5 +13,8 @@ pub mod primitives;
 pub mod rpc;
 pub mod transaction;
 
+#[cfg(any(test, feature = "arbitrary"))]
+pub mod test_vectors;
+
 #[cfg(test)]
 pub mod test_utils;
