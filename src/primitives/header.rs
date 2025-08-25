@@ -507,7 +507,7 @@ struct CompactBerachainHeader {
     excess_blob_gas: Option<u64>,
     parent_beacon_block_root: Option<B256>,
     extra_fields: Option<BerachainHeaderExt>,
-    extra_data: Bytes,
+    // extra_data: Bytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Compact, Serialize, Deserialize)]
@@ -562,7 +562,7 @@ impl Compact for BerachainHeader {
             excess_blob_gas: self.excess_blob_gas,
             parent_beacon_block_root: self.parent_beacon_block_root,
             extra_fields: extra_fields.into_option(),
-            extra_data: self.extra_data.clone(),
+            // extra_data: self.extra_data.clone(),
         };
         compact_header.to_compact(buf)
     }
@@ -596,7 +596,8 @@ impl Compact for BerachainHeader {
             parent_beacon_block_root: header.parent_beacon_block_root,
             requests_hash: header.extra_fields.as_ref().and_then(|h| h.requests_hash),
             prev_proposer_pubkey: header.extra_fields.as_ref().and_then(|h| h.prev_proposer_pubkey),
-            extra_data: header.extra_data,
+            extra_data: Bytes::new(),
+            // extra_data: header.extra_data,
         };
 
         (berachain_header, buf)
