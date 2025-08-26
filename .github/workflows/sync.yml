@@ -15,8 +15,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    name: build bera-reth
+    runs-on: ubuntu-latest-large
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rui314/setup-mold@v1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Build bera-reth
+        run: cargo build --profile maxperf
+      - name: Upload bera-reth binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: bera-reth-binary
+          path: target/maxperf/bera-reth
+
   sync:
     name: sync (${{ matrix.network.name }})
+    needs: build
     runs-on: ubuntu-latest-large
     env:
       RUST_LOG: info,sync=error
@@ -37,20 +56,20 @@ jobs:
             genesis_url: https://raw.githubusercontent.com/berachain/beacon-kit/main/testing/networks/80069/eth-genesis.json
             peers_url: https://raw.githubusercontent.com/berachain/beacon-kit/main/testing/networks/80069/el-peers.txt
             etherscan_url: https://api.etherscan.io/v2/api?chainid=80069
-            max_block: 1000000
+            max_block: 8600000
     steps:
       - uses: actions/checkout@v4
-      - uses: rui314/setup-mold@v1
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Download bera-reth binary
+        uses: actions/download-artifact@v4
         with:
-          cache-on-failure: true
+          name: bera-reth-binary
+          path: target/maxperf/
+      - name: Make bera-reth executable
+        run: chmod +x target/maxperf/bera-reth
       - name: Download genesis file and trusted peers
         run: |
           curl -o eth-genesis.json ${{ matrix.network.genesis_url }}
           curl -o el-peers.txt ${{ matrix.network.peers_url }}
-      - name: Build bera-reth
-        run: cargo build --profile maxperf
       - name: Run etherscan sync
         run: |
           TRUSTED_PEERS=$(cat el-peers.txt)
@@ -62,17 +81,33 @@ jobs:
             --debug.max-block ${{ matrix.network.max_block }} \
             --debug.terminate \
             --trusted-peers "$TRUSTED_PEERS" \
-            -vvv --http --http.api eth
+            -vvv
       - name: Verify sync progress
         run: |
+          # Start node with HTTP API enabled
+          echo "Starting node with HTTP API enabled"
+          ./target/maxperf/bera-reth node \
+            --chain ./eth-genesis.json \
+            --datadir ./tmp \
+            --http --http.addr 0.0.0.0 --http.port 8545 --http.api eth,net,debug,trace \
+            -vvv &
+          NODE_PID=$!
+          echo "NODE_PID=$NODE_PID" >> $GITHUB_ENV
+          # Wait for node to be ready
+          sleep 10
+          
           # Check if we've synced beyond the target block
           BLOCK_NUMBER_HEX=$(curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://localhost:8545 | jq -r .result)
           BLOCK_DECIMAL=$(printf "%d" $BLOCK_NUMBER_HEX)
           TARGET_BLOCK=${{ matrix.network.max_block }}
           echo "Latest block number: $BLOCK_DECIMAL (hex: $BLOCK_NUMBER_HEX)"
-          if [ $BLOCK_DECIMAL -gt $TARGET_BLOCK ]; then
-            echo "✅ Sync test successful - block number $BLOCK_DECIMAL > $TARGET_BLOCK"
+          
+          # Stop the node
+          kill $NODE_PID || true
+          
+          if [ $BLOCK_DECIMAL -ge $TARGET_BLOCK ]; then
+            echo "✅ Sync test successful - block number $BLOCK_DECIMAL >= $TARGET_BLOCK"
           else
-            echo "❌ Sync test failed - block number $BLOCK_DECIMAL <= $TARGET_BLOCK"
+            echo "❌ Sync test failed - block number $BLOCK_DECIMAL < $TARGET_BLOCK"
             exit 1
           fi 
