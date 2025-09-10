@@ -64,10 +64,6 @@ impl EthChainSpec for BerachainChainSpec {
         }
     }
 
-    fn base_fee_params_at_block(&self, block_number: u64) -> BaseFeeParams {
-        self.inner.base_fee_params_at_block(block_number)
-    }
-
     fn base_fee_params_at_timestamp(&self, timestamp: u64) -> BaseFeeParams {
         // Use the inner implementation which respects our configured base_fee_params
         // This will correctly return Prague1 parameters when active
@@ -314,6 +310,23 @@ impl From<Genesis> for BerachainChainSpec {
                 );
             }
             _ => {}
+        }
+
+        // Berachain networks do not support BPO hardforks - enforce they are not configured
+        let bpo_forks = [
+            ("bpo1_time", genesis.config.bpo1_time),
+            ("bpo2_time", genesis.config.bpo2_time),
+            ("bpo3_time", genesis.config.bpo3_time),
+            ("bpo4_time", genesis.config.bpo4_time),
+            ("bpo5_time", genesis.config.bpo5_time),
+        ];
+
+        for (fork_name, fork_time) in bpo_forks {
+            if fork_time.is_some() {
+                panic!(
+                    "Berachain networks do not support BPO hardforks. Found {fork_name} configured in genesis."
+                );
+            }
         }
 
         // Berachain hardforks: all pre-Cancun at genesis, then configurable time-based forks
@@ -1126,6 +1139,131 @@ mod tests {
             address!("0x4200000000000000000000000000000000000042")
         );
         assert_eq!(chain_spec.prague1_minimum_base_fee, 10000000000);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Berachain networks do not support BPO hardforks. Found bpo1_time configured in genesis."
+    )]
+    fn test_panic_on_bpo1_hardfork() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        genesis.config.bpo1_time = Some(1000);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Berachain networks do not support BPO hardforks. Found bpo2_time configured in genesis."
+    )]
+    fn test_panic_on_bpo2_hardfork() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        genesis.config.bpo2_time = Some(1000);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Berachain networks do not support BPO hardforks. Found bpo3_time configured in genesis."
+    )]
+    fn test_panic_on_bpo3_hardfork() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        genesis.config.bpo3_time = Some(1000);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Berachain networks do not support BPO hardforks. Found bpo4_time configured in genesis."
+    )]
+    fn test_panic_on_bpo4_hardfork() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        genesis.config.bpo4_time = Some(1000);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Berachain networks do not support BPO hardforks. Found bpo5_time configured in genesis."
+    )]
+    fn test_panic_on_bpo5_hardfork() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        genesis.config.bpo5_time = Some(1000);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
     }
 
     #[test]
