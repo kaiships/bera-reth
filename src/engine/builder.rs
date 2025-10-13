@@ -222,7 +222,8 @@ where
     let base_fee = builder.evm_mut().block().basefee;
 
     let mut best_txs = best_txs(BestTransactionsAttributes::new(
-        base_fee,
+        // TODO: Use custom implementation to collect best txs from mempool
+        0,
         builder.evm_mut().block().blob_gasprice().map(|gasprice| gasprice as u64),
     ));
     let mut total_fees = U256::ZERO;
@@ -373,8 +374,8 @@ where
         block_transactions_rlp_length += tx.inner().length();
 
         // update and add to total fees
-        let miner_fee =
-            tx.effective_tip_per_gas(base_fee).expect("fee is always valid; execution succeeded");
+        // TODO: If transfer type then miner fee is 0n
+        let miner_fee = 0;
         total_fees += U256::from(miner_fee) * U256::from(gas_used);
         cumulative_gas_used += gas_used;
 

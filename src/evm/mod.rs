@@ -1,5 +1,5 @@
 use crate::transaction::POL_TX_TYPE;
-use alloy_primitives::{Address, Bytes, TxKind};
+use alloy_primitives::{Address, Bytes, TxKind, address};
 use reth::revm::{
     Context, ExecuteEvm, InspectEvm, InspectSystemCallEvm, Inspector, MainBuilder, MainContext,
     SystemCallEvm,
@@ -17,7 +17,12 @@ use reth::revm::{
 use reth_evm::{
     Database, Evm, EvmEnv, EvmFactory, eth::EthEvmContext, precompiles::PrecompilesMap,
 };
-use std::ops::{Deref, DerefMut};
+use reth_rpc_eth_types::error::RpcPoolError::AddressAlreadyReserved;
+use std::{
+    ops::{Deref, DerefMut},
+    ptr::eq,
+};
+use tracing::info;
 
 /// Helper builder to construct `BerachainEvm` instances in a unified way.
 #[derive(Debug)]
@@ -178,6 +183,17 @@ impl<DB: Database, I, PRECOMPILE> DerefMut for BerachainEvm<DB, I, PRECOMPILE> {
     }
 }
 
+impl<DB: Database, I, PRECOMPILE> BerachainEvm<DB, I, PRECOMPILE> {
+    fn is_gas_free_transaction(&self, tx: &TxEnv) -> bool {
+        const TRANSFER_SELECTOR: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb];
+        const GAS_FREE_ERC20_ADDRESS: Address =
+            address!("0x18Df82C7E422A42D47345Ed86B0E935E9718eBda");
+
+        matches!(tx.kind, TxKind::Call(target) if target == GAS_FREE_ERC20_ADDRESS) &&
+            tx.data.get(..4) == Some(&TRANSFER_SELECTOR)
+    }
+}
+
 impl<DB, I, PRECOMPILE> Evm for BerachainEvm<DB, I, PRECOMPILE>
 where
     DB: Database,
@@ -202,8 +218,9 @@ where
 
     fn transact_raw(
         &mut self,
-        tx: Self::Tx,
+        mut tx: Self::Tx,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
+        // Check for POL transactions
         if TxEnvTransaction::tx_type(&tx) == POL_TX_TYPE {
             return match tx.kind {
                 TxKind::Create => {
@@ -228,6 +245,26 @@ where
                 }
             };
         }
+
+        // Check for gas-free calldata patterns FIRST
+        if self.is_gas_free_transaction(&tx) {
+            // Make transaction truly gas-free by setting gas price to 0
+            // This allows users with no balance to execute
+            // and the base fee for execution to 0
+            tx.gas_price = 0;
+            tx.gas_priority_fee = None;
+            tx.gas_limit = 10_000_000;
+
+            let original_base_fee = self.block().basefee;
+            self.modify_block(|b| b.basefee = 0);
+
+            let resp =
+                if self.inspect { self.inner.inspect_tx(tx) } else { self.inner.transact(tx) };
+            self.modify_block(|b| b.basefee = original_base_fee);
+            return resp;
+        }
+
+        // Normal transaction execution
         if self.inspect { self.inner.inspect_tx(tx) } else { self.inner.transact(tx) }
     }
 
