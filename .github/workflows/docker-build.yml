@@ -53,7 +53,12 @@ jobs:
           images: ${{ env.DOCKER_IMAGE_NAME }}
       - name: Build and push Docker image
         id: build-and-push
-        run: DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make ${{ inputs.make-target }}
+        run: |
+          DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make ${{ inputs.make-target }}
+          # Get digest from the first tag in docker-meta output
+          TAG=$(echo "${{ steps.docker-meta.outputs.tags }}" | head -n1 | cut -d: -f2)
+          DIGEST=$(docker buildx imagetools inspect ${{ env.DOCKER_IMAGE_NAME }}:${TAG} --format "{{json .Manifest}}" | jq -r '.digest')
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
       - name: Sign the published Docker image
         # if: ${{ github.event_name != 'pull_request' }}
         env:
