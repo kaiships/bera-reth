@@ -62,6 +62,7 @@ docker-build-push-nightly-profiling: ## Build and push cross-arch Docker image w
 
 # Create a cross-arch Docker image with the given tags and push it
 define docker_build_push
+	@METADATA_FILE=$$(mktemp /tmp/docker-build-metadata.XXXXXX.json) && \
 	docker buildx build --file ./Dockerfile . \
 		--platform linux/amd64,linux/arm64 \
 		--tag $(DOCKER_IMAGE_NAME):$(1) \
@@ -71,7 +72,10 @@ define docker_build_push
 		--build-arg BUILD_PROFILE=$(PROFILE) \
 		--build-arg FEATURES="$(FEATURES)" \
 		--provenance=false \
-		--push
+		--push \
+		--metadata-file=$$METADATA_FILE && \
+	jq -r '{digest: .["containerimage.digest"], tag: "$(1)"}' $$METADATA_FILE && \
+	rm -f $$METADATA_FILE
 endef
 
 # Local build targets for development

@@ -54,11 +54,43 @@ jobs:
       - name: Build and push Docker image
         id: build-and-push
         run: |
-          DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make ${{ inputs.make-target }}
-          # Get digest from the first tag in docker-meta output
-          TAG=$(echo "${{ steps.docker-meta.outputs.tags }}" | head -n1 | cut -d: -f2)
-          DIGEST=$(docker buildx imagetools inspect ${{ env.DOCKER_IMAGE_NAME }}:${TAG} --format "{{json .Manifest}}" | jq -r '.digest')
+          set -e
+
+          # Build and push the image, capturing JSON output from last line
+          OUTPUT=$(DOCKER_IMAGE_NAME=${{ env.DOCKER_IMAGE_NAME }} PROFILE=${{ inputs.profile }} make ${{ inputs.make-target }} 2>&1)
+
+          # Extract the JSON from the last line of output
+          JSON=$(echo "$OUTPUT" | tail -n1)
+
+          # Parse digest and tag from JSON
+          DIGEST=$(echo "$JSON" | jq -r '.digest')
+          TAG=$(echo "$JSON" | jq -r '.tag')
+
+          # Log for debugging
+          echo "Build output JSON: ${JSON}"
+          echo "Extracted TAG: ${TAG}"
+          echo "Extracted DIGEST: ${DIGEST}"
+
+          # Validate outputs
+          if [ -z "${TAG}" ] || [ "${TAG}" = "null" ]; then
+            echo "ERROR: Failed to extract TAG from build output" >&2
+            exit 1
+          fi
+
+          if [ -z "${DIGEST}" ] || [ "${DIGEST}" = "null" ]; then
+            echo "ERROR: Failed to extract DIGEST from build output" >&2
+            exit 1
+          fi
+
+          # Validate digest format
+          if ! echo "${DIGEST}" | grep -qE '^sha256:[a-f0-9]{64}$'; then
+            echo "ERROR: DIGEST '${DIGEST}' is not a valid sha256 digest" >&2
+            exit 1
+          fi
+
+          # Output for next steps
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
       - name: Sign the published Docker image
         # if: ${{ github.event_name != 'pull_request' }}
         env:
