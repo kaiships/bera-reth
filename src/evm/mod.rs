@@ -271,6 +271,13 @@ where
 #[non_exhaustive]
 pub struct BerachainEvmFactory;
 
+impl BerachainEvmFactory {
+    /// Creates a new instance of `BerachainEvmFactory`.
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
 impl EvmFactory for BerachainEvmFactory {
     type Evm<DB: Database, I: Inspector<EthEvmContext<DB>>> =
         BerachainEvm<DB, I, Self::Precompiles>;

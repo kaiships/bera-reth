@@ -4,6 +4,14 @@ version = "1.1.1-rc.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
+[[bin]]
+name = "bera-reth"
+path = "src/main.rs"
+
+[[bin]]
+name = "bera-sequencer"
+path = "src/bin/bera-sequencer.rs"
+
 [dependencies]
 alloy-consensus = "1.0.37"
 alloy-eips = "1.0.37"
@@ -54,8 +62,13 @@ reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-validator = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-trie = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
