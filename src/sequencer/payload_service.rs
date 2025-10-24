@@ -1,9 +1,11 @@
 //! Custom payload service builder for the sequencer
 
-use crate::node::evm::BerachainEvmConfig;
+use crate::{
+    node::evm::BerachainEvmConfig, sequencer::minimal_payload_service::MinimalPayloadService,
+};
 use reth_node_api::{FullNodeTypes, NodeTypes};
 use reth_node_builder::{BuilderContext, components::PayloadServiceBuilder};
-use reth_payload_builder::{PayloadBuilderHandle, noop::NoopPayloadBuilderService};
+use reth_payload_builder::PayloadBuilderHandle;
 use reth_transaction_pool::TransactionPool;
 use tracing::info;
 
@@ -22,16 +24,15 @@ where
         _pool: Pool,
         _evm_config: BerachainEvmConfig,
     ) -> eyre::Result<PayloadBuilderHandle<<N::Types as NodeTypes>::Payload>> {
-        info!(target: "sequencer", "Spawning sequencer payload service with NoopPayloadBuilder");
+        info!(target: "sequencer", "Spawning minimal sequencer payload service");
 
-        // For now, just spawn a NoopPayloadBuilder
-        let (noop_service, handle) =
-            NoopPayloadBuilderService::<<N::Types as NodeTypes>::Payload>::new();
+        let (service, handle) = MinimalPayloadService::<<N::Types as NodeTypes>::Payload>::new();
 
-        // Spawn the service
-        tokio::spawn(noop_service);
-
-        info!(target: "sequencer", "Sequencer payload service started");
+        // Spawn the service to run indefinitely
+        tokio::spawn(async move {
+            service.await;
+            info!(target: "sequencer", "Payload service terminated");
+        });
 
         Ok(handle)
     }
