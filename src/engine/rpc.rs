@@ -35,7 +35,7 @@ use reth_payload_primitives::{EngineObjectValidationError, PayloadAttributes, Pa
 use reth_rpc_engine_api::{EngineApi, EngineApiError, EngineCapabilities};
 use reth_transaction_pool::TransactionPool;
 use std::sync::Arc;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 /// Builder for [`BerachainEngineApi`] implementation.
 #[derive(Debug, Default)]
@@ -537,6 +537,7 @@ where
                 attrs.timestamp(),
                 attrs.prev_proposer_pubkey(),
             )?;
+            info!(target: "rpc::engine", "Serving engine_forkchoiceUpdatedV3P11 with attributes {:?}", attrs);
         }
 
         Ok(self.inner.fork_choice_updated_v3_metered(fork_choice_state, payload_attributes).await?)
@@ -579,6 +580,7 @@ where
         payload_id: PayloadId,
     ) -> RpcResult<EngineT::ExecutionPayloadEnvelopeV4> {
         trace!(target: "rpc::engine", "Serving engine_getPayloadV4P11");
+        info!(target: "rpc::engine", "Serving get_payload_v4_p11");
         Ok(self.inner.get_payload_v4_metered(payload_id).await?)
     }
 

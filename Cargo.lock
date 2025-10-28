@@ -1500,6 +1500,7 @@ dependencies = [
  "test-fuzz",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-util",
  "tracing",
  "vergen",
  "vergen-git2",
