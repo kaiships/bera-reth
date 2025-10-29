@@ -49,7 +49,7 @@ fn main() {
             async move |builder, _| {
                 info!(target: "reth::cli", "Launching Berachain Sequencer node");
                 let NodeHandle { node: _node, node_exit_future } =
-                    builder.node(SequencerNode::default()).launch_with_debug_capabilities().await?;
+                    builder.node(SequencerNode).launch_with_debug_capabilities().await?;
 
                 node_exit_future.await
             },

@@ -49,7 +49,7 @@ pub enum SequencerStateMachine {
     /// The receiver is taken when the payload is resolved (getPayload).
     BuildingPayload {
         payload_id: PayloadId,
-        attributes: BerachainPayloadBuilderAttributes,
+        timestamp: u64,
         /// Receiver for the built payload - becomes None after resolution
         receiver: Option<oneshot::Receiver<Result<BerachainBuiltPayload, PayloadBuilderError>>>,
         /// Token to signal the build task to stop adding transactions and finalize
@@ -161,11 +161,9 @@ where
                         }
                     });
 
-                    // Transition to building state
-                    info!(target: "sequencer", payload_id = ?id, "Transitioning to BuildingPayload state");
                     self.status = SequencerStateMachine::BuildingPayload {
                         payload_id: id,
-                        attributes: attr,
+                        timestamp: attr.timestamp,
                         receiver: Some(build_rx),
                         cancel_token,
                     };
@@ -179,16 +177,12 @@ where
             },
             SequencerStateMachine::BuildingPayload {
                 payload_id,
-                attributes,
+                timestamp,
                 receiver,
                 cancel_token,
             } => match cmd {
                 PayloadServiceCommand::PayloadTimestamp(id, tx) => {
-                    info!(target: "sequencer", "Received PayloadTimestamp request for payload {}", id);
-
-                    let timestamp =
-                        if id == *payload_id { Some(Ok(attributes.timestamp)) } else { None };
-
+                    let timestamp = if id == *payload_id { Some(Ok(*timestamp)) } else { None };
                     let _ = tx.send(timestamp);
                 }
                 PayloadServiceCommand::Resolve(id, _kind, tx) => {
