@@ -57,25 +57,25 @@ reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", t
 reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-evm-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-network-peers = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
-reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-validator = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
-reth-trie = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-eth-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-eth-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
+reth-trie = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 serde = { version = "1.0", features = ["derive"], default-features = false }
 thiserror = "2.0"
 tokio = "1.46.0"
