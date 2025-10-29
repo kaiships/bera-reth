@@ -54,7 +54,7 @@ where
             .node_types()
             .pool(BerachainPoolBuilder)
             .executor(BerachainExecutorBuilder)
-            .payload(SequencerPayloadServiceBuilder::default())
+            .payload(SequencerPayloadServiceBuilder)
             .network(EthereumNetworkBuilder::default())
             .consensus(BerachainConsensusBuilder)
     }

@@ -35,7 +35,7 @@ use reth_payload_primitives::{EngineObjectValidationError, PayloadAttributes, Pa
 use reth_rpc_engine_api::{EngineApi, EngineApiError, EngineCapabilities};
 use reth_transaction_pool::TransactionPool;
 use std::sync::Arc;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 
 /// Builder for [`BerachainEngineApi`] implementation.
 #[derive(Debug, Default)]
