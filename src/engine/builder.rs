@@ -355,9 +355,8 @@ where
                 // Check for Prague3 violations before committing
                 if let reth::revm::context::result::ExecutionResult::Success { logs, .. } = result {
                     for log in logs {
-                        // Check for blocked address Transfer events
-                        if let Some(blocked_addresses) = blocked_addresses &&
-                            log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
+                        // Check for Transfer events (blocked addresses or BEX vault)
+                        if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
                             log.topics().len() >= 3
                         {
                             // Transfer event has indexed from (topics[1]) and to (topics[2])
@@ -365,17 +364,27 @@ where
                             let from_addr = Address::from_word(log.topics()[1]);
                             let to_addr = Address::from_word(log.topics()[2]);
 
-                            // Check if from address is blocked
-                            if blocked_addresses.contains(&from_addr) {
-                                // Blocked addresses can only send to rescue address
-                                if rescue_address != Some(to_addr) {
-                                    return reth_evm::block::CommitChanges::No;
-                                }
+                            // Check if BEX vault is involved (block all BEX vault transfers)
+                            if let Some(bex_vault) = bex_vault_address &&
+                                (from_addr == bex_vault || to_addr == bex_vault)
+                            {
+                                return reth_evm::block::CommitChanges::No;
                             }
 
-                            // Check if to address is blocked (blocked addresses cannot receive)
-                            if blocked_addresses.contains(&to_addr) {
-                                return reth_evm::block::CommitChanges::No;
+                            // Check blocked addresses
+                            if let Some(blocked_addresses) = blocked_addresses {
+                                // Check if from address is blocked
+                                if blocked_addresses.contains(&from_addr) {
+                                    // Blocked addresses can only send to rescue address
+                                    if rescue_address != Some(to_addr) {
+                                        return reth_evm::block::CommitChanges::No;
+                                    }
+                                }
+
+                                // Check if to address is blocked (blocked addresses cannot receive)
+                                if blocked_addresses.contains(&to_addr) {
+                                    return reth_evm::block::CommitChanges::No;
+                                }
                             }
                         }
 

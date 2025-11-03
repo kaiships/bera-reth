@@ -36,6 +36,9 @@ pub enum BerachainExecutionError {
     /// Prague3: Block contains InternalBalanceChanged event from BEX vault
     #[error("Prague3 violation: InternalBalanceChanged event from BEX vault {vault_address}")]
     Prague3BexVaultEvent { vault_address: Address },
+    /// Prague3: Block contains ERC20 transfer from/to BEX vault
+    #[error("Prague3 violation: ERC20 transfer from/to BEX vault {vault_address}")]
+    Prague3BexVaultTransfer { vault_address: Address },
 }
 
 impl BerachainExecutionError {

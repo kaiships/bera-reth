@@ -122,13 +122,15 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
             self.chain_spec.prague3_blocked_addresses_at_timestamp(timestamp)
         {
             let rescue_address = self.chain_spec.prague3_rescue_address_at_timestamp(timestamp);
+            let bex_vault_address =
+                self.chain_spec.prague3_bex_vault_address_at_timestamp(timestamp);
 
             // ERC20 Transfer event signature: Transfer(address,address,uint256)
             const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
                 "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
             );
 
-            // Check all receipts for ERC20 Transfer events involving blocked addresses
+            // Check all receipts for ERC20 Transfer events involving blocked addresses or BEX vault
             for receipt in &result.receipts {
                 for log in &receipt.logs {
                     // Check if this is a Transfer event (first topic is the event signature)
@@ -138,6 +140,19 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
                         // Transfer event has indexed from (topics[1]) and to (topics[2]) addresses
                         let from_addr = Address::from_word(log.topics()[1]);
                         let to_addr = Address::from_word(log.topics()[2]);
+
+                        // Check if BEX vault is involved in the transfer (block all BEX vault
+                        // transfers)
+                        if let Some(bex_vault) = bex_vault_address &&
+                            (from_addr == bex_vault || to_addr == bex_vault)
+                        {
+                            return Err(ConsensusError::Other(
+                                BerachainExecutionError::Prague3BexVaultTransfer {
+                                    vault_address: bex_vault,
+                                }
+                                .to_string(),
+                            ));
+                        }
 
                         // Check if from address is blocked
                         if blocked_addresses.contains(&from_addr) {
