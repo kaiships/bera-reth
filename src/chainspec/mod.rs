@@ -136,7 +136,23 @@ impl EthChainSpec for BerachainChainSpec {
             _ => "\nPrague2 Misconfigured".to_string(),
         };
 
-        Box::new(format!("{inner_display}{prague1_details}{prague2_details}"))
+        let prague3_details = if let Some(prague3_config) = &self.prague3_config {
+            let blocked_addrs: Vec<String> = prague3_config
+                .blocked_addresses
+                .iter()
+                .map(|addr| format!("{:#x}", addr))
+                .collect();
+            format!(
+                "\nBerachain Prague3 configuration: {{time={}, blocked_addresses=[{}], rescue_address={}}}",
+                prague3_config.time,
+                blocked_addrs.join(", "),
+                prague3_config.rescue_address
+            )
+        } else {
+            String::new()
+        };
+
+        Box::new(format!("{inner_display}{prague1_details}{prague2_details}{prague3_details}"))
     }
 
     fn genesis_header(&self) -> &Self::Header {
