@@ -121,5 +121,5 @@ jobs:
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_COLOR: ${{ job.status }}
-          SLACK_MESSAGE: "Sync test failed: https://github.com/berachain/bera-reth/actions/runs/${{ github.run_id }}"
+          SLACK_MESSAGE: "Sync test failed: https://github.com/berachain/bera-reth-internal/actions/runs/${{ github.run_id }}"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }} 
