@@ -1,7 +1,7 @@
 //! Berachain chain specification with Ethereum hardforks plus Prague1 minimum base fee
 
 use crate::{
-    genesis::BerachainGenesisConfig,
+    genesis::{BerachainGenesisConfig, Prague3Config},
     hardforks::{BerachainHardfork, BerachainHardforks},
     primitives::{BerachainHeader, header::BlsPublicKey},
 };
@@ -45,11 +45,22 @@ pub struct BerachainChainSpec {
     pub prague1_minimum_base_fee: u64,
     /// The minimum base fee in wei for Prague2
     pub prague2_minimum_base_fee: u64,
+    /// Prague3 configuration (if configured)
+    pub prague3_config: Option<Prague3Config>,
 }
 
 impl BerachainChainSpec {
     pub fn pol_contract(&self) -> Address {
         self.pol_contract_address
+    }
+
+    /// Get blocked token addresses for Prague3 if the hardfork is active
+    pub fn prague3_blocked_tokens_at_timestamp(&self, timestamp: u64) -> Option<&[Address]> {
+        if self.is_prague3_active_at_timestamp(timestamp) {
+            self.prague3_config.as_ref().map(|cfg| cfg.blocked_token_addresses.as_slice())
+        } else {
+            None
+        }
     }
 }
 
@@ -229,6 +240,7 @@ impl BerachainChainSpec {
             pol_contract_address: Address::ZERO,
             prague1_minimum_base_fee: 0,
             prague2_minimum_base_fee: 0,
+            prague3_config: None,
         }
     }
 }
@@ -246,9 +258,10 @@ impl From<Genesis> for BerachainChainSpec {
             return Self::ethereum_fallback(genesis);
         }
 
-        // Parse Prague1 and Prague2 configurations if present
+        // Parse Prague1, Prague2, and Prague3 configurations if present
         let prague1_config_opt = berachain_genesis_config.prague1;
         let prague2_config_opt = berachain_genesis_config.prague2;
+        let prague3_config_opt = berachain_genesis_config.prague3;
 
         // Both Prague1 and Prague2 are required for Berachain genesis
         let (prague1_config, prague2_config) = match (prague1_config_opt, prague2_config_opt) {
@@ -327,6 +340,16 @@ impl From<Genesis> for BerachainChainSpec {
             );
         }
 
+        // Validate Prague3 ordering if configured (Prague3 must come at or after Prague2)
+        if let Some(prague3_config) = prague3_config_opt.as_ref() {
+            if prague3_config.time < prague2_config.time {
+                panic!(
+                    "Prague3 hardfork must activate at or after Prague2 hardfork. Prague2 time: {}, Prague3 time: {}.",
+                    prague2_config.time, prague3_config.time
+                );
+            }
+        }
+
         // Berachain networks don't support proof-of-work or non-genesis merge
         if let Some(ttd) = genesis.config.terminal_total_difficulty {
             if !ttd.is_zero() {
@@ -399,6 +422,14 @@ impl From<Genesis> for BerachainChainSpec {
             BerachainHardfork::Prague2.boxed(),
             ForkCondition::Timestamp(prague2_config.time),
         ));
+
+        // Add Prague3 if configured
+        if let Some(prague3_config) = prague3_config_opt.as_ref() {
+            hardforks.push((
+                BerachainHardfork::Prague3.boxed(),
+                ForkCondition::Timestamp(prague3_config.time),
+            ));
+        }
 
         if let Some(osaka_time) = genesis.config.osaka_time {
             hardforks.push((EthereumHardfork::Osaka.boxed(), ForkCondition::Timestamp(osaka_time)));
@@ -486,6 +517,7 @@ impl From<Genesis> for BerachainChainSpec {
             pol_contract_address,
             prague1_minimum_base_fee,
             prague2_minimum_base_fee,
+            prague3_config: prague3_config_opt,
         }
     }
 }

@@ -7,7 +7,7 @@ use reth::{revm::primitives::address, rpc::types::serde_helpers::OtherFields};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use config::{Prague1Config, Prague2Config};
+pub use config::{Prague1Config, Prague2Config, Prague3Config};
 
 /// Errors for Berachain genesis configuration parsing
 #[derive(Debug, Error)]
@@ -26,13 +26,15 @@ pub enum BerachainConfigError {
 }
 
 /// Complete Berachain genesis configuration from JSON "berachain" field
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BerachainGenesisConfig {
     /// Configuration for the Prague1 hardfork, which introduces minimum base fee enforcement
     pub prague1: Option<Prague1Config>,
     /// Configuration for the Prague2 hardfork, which reverts base fee to 0
     pub prague2: Option<Prague2Config>,
+    /// Configuration for the Prague3 hardfork, which blocks events from specific token contracts
+    pub prague3: Option<Prague3Config>,
 }
 
 impl Default for BerachainGenesisConfig {
@@ -49,6 +51,7 @@ impl Default for BerachainGenesisConfig {
                 time: 0,                 // Activate immediately at genesis
                 minimum_base_fee_wei: 0, // 0 wei
             }),
+            prague3: None, // Not activated by default
         }
     }
 }
@@ -113,7 +116,7 @@ impl TryFrom<&OtherFields> for BerachainGenesisConfig {
                 Ok(cfg)
             }
             Some(Err(e)) => Err(BerachainConfigError::InvalidConfig(e)),
-            None => Ok(Self { prague1: None, prague2: None }),
+            None => Ok(Self { prague1: None, prague2: None, prague3: None }),
         }
     }
 }

@@ -1,9 +1,11 @@
 use crate::{
     chainspec::BerachainChainSpec,
     hardforks::BerachainHardforks,
+    node::evm::error::BerachainExecutionError,
     primitives::{BerachainBlock, BerachainHeader, BerachainPrimitives},
     transaction::{BerachainTxEnvelope, pol::validate_pol_transaction},
 };
+use alloy_consensus::BlockHeader;
 use reth::{
     api::NodeTypes,
     beacon_consensus::EthBeaconConsensus,
@@ -110,7 +112,29 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
         block: &RecoveredBlock<BerachainBlock>,
         result: &BlockExecutionResult<<BerachainPrimitives as NodePrimitives>::Receipt>,
     ) -> Result<(), ConsensusError> {
-        <EthBeaconConsensus<BerachainChainSpec> as FullConsensus<BerachainPrimitives>>::validate_block_post_execution(&self.inner, block, result)
+        // First run the standard validation
+        <EthBeaconConsensus<BerachainChainSpec> as FullConsensus<BerachainPrimitives>>::validate_block_post_execution(&self.inner, block, result)?;
+
+        // Check for Prague3 blocked token events if the hardfork is active
+        let timestamp = block.header().timestamp();
+        if let Some(blocked_tokens) = self.chain_spec.prague3_blocked_tokens_at_timestamp(timestamp)
+        {
+            // Check all receipts for events from blocked token contracts
+            for receipt in &result.receipts {
+                for log in &receipt.logs {
+                    if blocked_tokens.contains(&log.address) {
+                        return Err(ConsensusError::Other(
+                            BerachainExecutionError::Prague3BlockedTokenEvent {
+                                token_address: log.address,
+                            }
+                            .to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
