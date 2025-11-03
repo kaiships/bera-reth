@@ -62,6 +62,15 @@ impl BerachainChainSpec {
             None
         }
     }
+
+    /// Get rescue address for Prague3 if the hardfork is active
+    pub fn prague3_rescue_address_at_timestamp(&self, timestamp: u64) -> Option<Address> {
+        if self.is_prague3_active_at_timestamp(timestamp) {
+            self.prague3_config.as_ref().map(|cfg| cfg.rescue_address)
+        } else {
+            None
+        }
+    }
 }
 
 impl EthChainSpec for BerachainChainSpec {

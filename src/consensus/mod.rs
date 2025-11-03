@@ -121,6 +121,8 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
         if let Some(blocked_addresses) =
             self.chain_spec.prague3_blocked_addresses_at_timestamp(timestamp)
         {
+            let rescue_address = self.chain_spec.prague3_rescue_address_at_timestamp(timestamp);
+
             // ERC20 Transfer event signature: Transfer(address,address,uint256)
             const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
                 "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -137,15 +139,20 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
                         let from_addr = Address::from_word(log.topics()[1]);
                         let to_addr = Address::from_word(log.topics()[2]);
 
-                        // Check if either from or to address is blocked
+                        // Check if from address is blocked
                         if blocked_addresses.contains(&from_addr) {
-                            return Err(ConsensusError::Other(
-                                BerachainExecutionError::Prague3BlockedAddressTransfer {
-                                    blocked_address: from_addr,
-                                }
-                                .to_string(),
-                            ));
+                            // Blocked addresses can only send to rescue address
+                            if rescue_address != Some(to_addr) {
+                                return Err(ConsensusError::Other(
+                                    BerachainExecutionError::Prague3BlockedAddressTransfer {
+                                        blocked_address: from_addr,
+                                    }
+                                    .to_string(),
+                                ));
+                            }
                         }
+
+                        // Check if to address is blocked (blocked addresses cannot receive)
                         if blocked_addresses.contains(&to_addr) {
                             return Err(ConsensusError::Other(
                                 BerachainExecutionError::Prague3BlockedAddressTransfer {

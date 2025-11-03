@@ -35,4 +35,6 @@ pub struct Prague3Config {
     pub time: u64,
     /// List of addresses that are blocked from sending or receiving ERC20 transfers
     pub blocked_addresses: Vec<Address>,
+    /// Rescue address where blocked addresses can send ERC20 tokens
+    pub rescue_address: Address,
 }

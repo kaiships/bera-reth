@@ -338,6 +338,7 @@ where
         // Check Prague3 blocked addresses
         let timestamp = attributes.timestamp();
         let blocked_addresses = chain_spec.prague3_blocked_addresses_at_timestamp(timestamp);
+        let rescue_address = chain_spec.prague3_rescue_address_at_timestamp(timestamp);
 
         // ERC20 Transfer event signature
         const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
@@ -362,10 +363,16 @@ where
                             let from_addr = Address::from_word(log.topics()[1]);
                             let to_addr = Address::from_word(log.topics()[2]);
 
-                            // Don't commit if either from or to address is blocked
-                            if blocked_addresses.contains(&from_addr) ||
-                                blocked_addresses.contains(&to_addr)
-                            {
+                            // Check if from address is blocked
+                            if blocked_addresses.contains(&from_addr) {
+                                // Blocked addresses can only send to rescue address
+                                if rescue_address != Some(to_addr) {
+                                    return reth_evm::block::CommitChanges::No;
+                                }
+                            }
+
+                            // Check if to address is blocked (blocked addresses cannot receive)
+                            if blocked_addresses.contains(&to_addr) {
                                 return reth_evm::block::CommitChanges::No;
                             }
                         }
