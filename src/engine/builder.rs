@@ -335,8 +335,43 @@ where
             };
         }
 
-        let gas_used = match builder.execute_transaction(tx.clone()) {
-            Ok(gas_used) => gas_used,
+        // Check Prague3 blocked tokens
+        let timestamp = attributes.timestamp();
+        let blocked_tokens = chain_spec.prague3_blocked_tokens_at_timestamp(timestamp);
+
+        let gas_used = match builder.execute_transaction_with_commit_condition(
+            tx.clone(),
+            |result| {
+                // Check for Prague3 violations before committing
+                if let Some(blocked_tokens) = blocked_tokens {
+                    if let reth::revm::context::result::ExecutionResult::Success { logs, .. } =
+                        result
+                    {
+                        for log in logs {
+                            if blocked_tokens.contains(&log.address) {
+                                // Don't commit transactions that emit events from blocked tokens
+                                return reth_evm::block::CommitChanges::No;
+                            }
+                        }
+                    }
+                }
+                // Commit the transaction if no violations
+                reth_evm::block::CommitChanges::Yes
+            },
+        ) {
+            Ok(Some(gas_used)) => gas_used,
+            Ok(None) => {
+                // Transaction was discarded due to Prague3 violation
+                warn!(target: "payload_builder", ?tx, "skipping transaction due to Prague3 violation");
+                best_txs.mark_invalid(
+                    &pool_tx,
+                    InvalidPoolTransactionError::Consensus(
+                        // Using TxTypeNotSupported as a proxy for Prague3 violation
+                        InvalidTransactionError::TxTypeNotSupported,
+                    ),
+                );
+                continue
+            }
             Err(BlockExecutionError::Validation(BlockValidationError::InvalidTx {
                 error, ..
             })) => {
