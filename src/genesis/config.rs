@@ -37,4 +37,6 @@ pub struct Prague3Config {
     pub blocked_addresses: Vec<Address>,
     /// Rescue address where blocked addresses can send ERC20 tokens
     pub rescue_address: Address,
+    /// BEX vault address to block InternalBalanceChanged events from
+    pub bex_vault_address: Address,
 }

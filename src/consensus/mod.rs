@@ -166,6 +166,35 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
             }
         }
 
+        // Check for Prague3 BEX vault InternalBalanceChanged events if the hardfork is active
+        if let Some(bex_vault_address) =
+            self.chain_spec.prague3_bex_vault_address_at_timestamp(timestamp)
+        {
+            // InternalBalanceChanged event signature:
+            // InternalBalanceChanged(address,address,int256)
+            const INTERNAL_BALANCE_CHANGED_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
+                "18e1ea4139e68413d7d08aa752e71568e36b2c5bf940893314c2c5b01eaa0c42"
+            );
+
+            // Check all receipts for InternalBalanceChanged events from BEX vault
+            for receipt in &result.receipts {
+                for log in &receipt.logs {
+                    // Check if this log is from the BEX vault and is an InternalBalanceChanged
+                    // event
+                    if log.address == bex_vault_address &&
+                        log.topics().first() == Some(&INTERNAL_BALANCE_CHANGED_SIGNATURE)
+                    {
+                        return Err(ConsensusError::Other(
+                            BerachainExecutionError::Prague3BexVaultEvent {
+                                vault_address: bex_vault_address,
+                            }
+                            .to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }

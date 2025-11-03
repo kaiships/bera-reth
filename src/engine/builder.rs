@@ -335,27 +335,29 @@ where
             };
         }
 
-        // Check Prague3 blocked addresses
+        // Check Prague3 blocked addresses and BEX vault
         let timestamp = attributes.timestamp();
         let blocked_addresses = chain_spec.prague3_blocked_addresses_at_timestamp(timestamp);
         let rescue_address = chain_spec.prague3_rescue_address_at_timestamp(timestamp);
+        let bex_vault_address = chain_spec.prague3_bex_vault_address_at_timestamp(timestamp);
 
-        // ERC20 Transfer event signature
+        // Event signatures
         const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
             "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+        );
+        const INTERNAL_BALANCE_CHANGED_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
+            "18e1ea4139e68413d7d08aa752e71568e36b2c5bf940893314c2c5b01eaa0c42"
         );
 
         let gas_used = match builder.execute_transaction_with_commit_condition(
             tx.clone(),
             |result| {
                 // Check for Prague3 violations before committing
-                if let Some(blocked_addresses) = blocked_addresses &&
-                    let reth::revm::context::result::ExecutionResult::Success { logs, .. } =
-                        result
-                {
+                if let reth::revm::context::result::ExecutionResult::Success { logs, .. } = result {
                     for log in logs {
-                        // Check if this is a Transfer event
-                        if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
+                        // Check for blocked address Transfer events
+                        if let Some(blocked_addresses) = blocked_addresses &&
+                            log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
                             log.topics().len() >= 3
                         {
                             // Transfer event has indexed from (topics[1]) and to (topics[2])
@@ -375,6 +377,14 @@ where
                             if blocked_addresses.contains(&to_addr) {
                                 return reth_evm::block::CommitChanges::No;
                             }
+                        }
+
+                        // Check for BEX vault InternalBalanceChanged events
+                        if let Some(bex_vault) = bex_vault_address &&
+                            log.address == bex_vault &&
+                            log.topics().first() == Some(&INTERNAL_BALANCE_CHANGED_SIGNATURE)
+                        {
+                            return reth_evm::block::CommitChanges::No;
                         }
                     }
                 }

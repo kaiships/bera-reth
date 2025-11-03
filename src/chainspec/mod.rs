@@ -71,6 +71,15 @@ impl BerachainChainSpec {
             None
         }
     }
+
+    /// Get BEX vault address for Prague3 if the hardfork is active
+    pub fn prague3_bex_vault_address_at_timestamp(&self, timestamp: u64) -> Option<Address> {
+        if self.is_prague3_active_at_timestamp(timestamp) {
+            self.prague3_config.as_ref().map(|cfg| cfg.bex_vault_address)
+        } else {
+            None
+        }
+    }
 }
 
 impl EthChainSpec for BerachainChainSpec {
@@ -143,10 +152,11 @@ impl EthChainSpec for BerachainChainSpec {
                 .map(|addr| format!("{:#x}", addr))
                 .collect();
             format!(
-                "\nBerachain Prague3 configuration: {{time={}, blocked_addresses=[{}], rescue_address={}}}",
+                "\nBerachain Prague3 configuration: {{time={}, blocked_addresses=[{}], rescue_address={}, bex_vault_address={}}}",
                 prague3_config.time,
                 blocked_addrs.join(", "),
-                prague3_config.rescue_address
+                prague3_config.rescue_address,
+                prague3_config.bex_vault_address
             )
         } else {
             String::new()
