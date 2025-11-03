@@ -8,7 +8,7 @@ use crate::{
     transaction::BerachainTxEnvelope,
 };
 use alloy_consensus::Transaction;
-use alloy_primitives::U256;
+use alloy_primitives::{Address, U256};
 use alloy_rlp::Encodable;
 use reth::{
     api::{FullNodeTypes, NodeTypes, PayloadBuilderError, PayloadTypes, TxTy},
@@ -335,22 +335,39 @@ where
             };
         }
 
-        // Check Prague3 blocked tokens
+        // Check Prague3 blocked addresses
         let timestamp = attributes.timestamp();
-        let blocked_tokens = chain_spec.prague3_blocked_tokens_at_timestamp(timestamp);
+        let blocked_addresses = chain_spec.prague3_blocked_addresses_at_timestamp(timestamp);
+
+        // ERC20 Transfer event signature
+        const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
+            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+        );
 
         let gas_used = match builder.execute_transaction_with_commit_condition(
             tx.clone(),
             |result| {
                 // Check for Prague3 violations before committing
-                if let Some(blocked_tokens) = blocked_tokens {
+                if let Some(blocked_addresses) = blocked_addresses {
                     if let reth::revm::context::result::ExecutionResult::Success { logs, .. } =
                         result
                     {
                         for log in logs {
-                            if blocked_tokens.contains(&log.address) {
-                                // Don't commit transactions that emit events from blocked tokens
-                                return reth_evm::block::CommitChanges::No;
+                            // Check if this is a Transfer event
+                            if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
+                                log.topics().len() >= 3
+                            {
+                                // Transfer event has indexed from (topics[1]) and to (topics[2])
+                                // addresses
+                                let from_addr = Address::from_word(log.topics()[1]);
+                                let to_addr = Address::from_word(log.topics()[2]);
+
+                                // Don't commit if either from or to address is blocked
+                                if blocked_addresses.contains(&from_addr) ||
+                                    blocked_addresses.contains(&to_addr)
+                                {
+                                    return reth_evm::block::CommitChanges::No;
+                                }
                             }
                         }
                     }

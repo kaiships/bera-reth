@@ -33,6 +33,6 @@ pub struct Prague2Config {
 pub struct Prague3Config {
     /// Unix timestamp when Prague3 activates
     pub time: u64,
-    /// List of token contract addresses whose events will cause transaction rejection
-    pub blocked_token_addresses: Vec<Address>,
+    /// List of addresses that are blocked from sending or receiving ERC20 transfers
+    pub blocked_addresses: Vec<Address>,
 }

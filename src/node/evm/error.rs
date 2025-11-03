@@ -28,11 +28,9 @@ pub enum BerachainExecutionError {
     /// Missing POL transaction at index 0 in Prague1 block
     #[error("First transaction in Prague1 block must be a POL transaction")]
     MissingPolTransactionAtIndex0,
-    /// Prague3: Block contains event from blocked token contract
-    #[error(
-        "Prague3 violation: transaction emitted event from blocked token contract {token_address}"
-    )]
-    Prague3BlockedTokenEvent { token_address: Address },
+    /// Prague3: Block contains ERC20 transfer from/to blocked address
+    #[error("Prague3 violation: ERC20 transfer involving blocked address {blocked_address}")]
+    Prague3BlockedAddressTransfer { blocked_address: Address },
 }
 
 impl BerachainExecutionError {

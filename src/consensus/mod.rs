@@ -6,6 +6,7 @@ use crate::{
     transaction::{BerachainTxEnvelope, pol::validate_pol_transaction},
 };
 use alloy_consensus::BlockHeader;
+use alloy_primitives::Address;
 use reth::{
     api::NodeTypes,
     beacon_consensus::EthBeaconConsensus,
@@ -115,20 +116,44 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
         // First run the standard validation
         <EthBeaconConsensus<BerachainChainSpec> as FullConsensus<BerachainPrimitives>>::validate_block_post_execution(&self.inner, block, result)?;
 
-        // Check for Prague3 blocked token events if the hardfork is active
+        // Check for Prague3 blocked address transfers if the hardfork is active
         let timestamp = block.header().timestamp();
-        if let Some(blocked_tokens) = self.chain_spec.prague3_blocked_tokens_at_timestamp(timestamp)
+        if let Some(blocked_addresses) =
+            self.chain_spec.prague3_blocked_addresses_at_timestamp(timestamp)
         {
-            // Check all receipts for events from blocked token contracts
+            // ERC20 Transfer event signature: Transfer(address,address,uint256)
+            const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
+                "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            );
+
+            // Check all receipts for ERC20 Transfer events involving blocked addresses
             for receipt in &result.receipts {
                 for log in &receipt.logs {
-                    if blocked_tokens.contains(&log.address) {
-                        return Err(ConsensusError::Other(
-                            BerachainExecutionError::Prague3BlockedTokenEvent {
-                                token_address: log.address,
-                            }
-                            .to_string(),
-                        ));
+                    // Check if this is a Transfer event (first topic is the event signature)
+                    if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
+                        log.topics().len() >= 3
+                    {
+                        // Transfer event has indexed from (topics[1]) and to (topics[2]) addresses
+                        let from_addr = Address::from_word(log.topics()[1]);
+                        let to_addr = Address::from_word(log.topics()[2]);
+
+                        // Check if either from or to address is blocked
+                        if blocked_addresses.contains(&from_addr) {
+                            return Err(ConsensusError::Other(
+                                BerachainExecutionError::Prague3BlockedAddressTransfer {
+                                    blocked_address: from_addr,
+                                }
+                                .to_string(),
+                            ));
+                        }
+                        if blocked_addresses.contains(&to_addr) {
+                            return Err(ConsensusError::Other(
+                                BerachainExecutionError::Prague3BlockedAddressTransfer {
+                                    blocked_address: to_addr,
+                                }
+                                .to_string(),
+                            ));
+                        }
                     }
                 }
             }

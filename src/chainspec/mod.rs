@@ -54,10 +54,10 @@ impl BerachainChainSpec {
         self.pol_contract_address
     }
 
-    /// Get blocked token addresses for Prague3 if the hardfork is active
-    pub fn prague3_blocked_tokens_at_timestamp(&self, timestamp: u64) -> Option<&[Address]> {
+    /// Get blocked addresses for Prague3 if the hardfork is active
+    pub fn prague3_blocked_addresses_at_timestamp(&self, timestamp: u64) -> Option<&[Address]> {
         if self.is_prague3_active_at_timestamp(timestamp) {
-            self.prague3_config.as_ref().map(|cfg| cfg.blocked_token_addresses.as_slice())
+            self.prague3_config.as_ref().map(|cfg| cfg.blocked_addresses.as_slice())
         } else {
             None
         }
