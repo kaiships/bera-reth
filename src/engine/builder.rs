@@ -348,26 +348,25 @@ where
             tx.clone(),
             |result| {
                 // Check for Prague3 violations before committing
-                if let Some(blocked_addresses) = blocked_addresses {
-                    if let reth::revm::context::result::ExecutionResult::Success { logs, .. } =
+                if let Some(blocked_addresses) = blocked_addresses &&
+                    let reth::revm::context::result::ExecutionResult::Success { logs, .. } =
                         result
-                    {
-                        for log in logs {
-                            // Check if this is a Transfer event
-                            if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
-                                log.topics().len() >= 3
-                            {
-                                // Transfer event has indexed from (topics[1]) and to (topics[2])
-                                // addresses
-                                let from_addr = Address::from_word(log.topics()[1]);
-                                let to_addr = Address::from_word(log.topics()[2]);
+                {
+                    for log in logs {
+                        // Check if this is a Transfer event
+                        if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
+                            log.topics().len() >= 3
+                        {
+                            // Transfer event has indexed from (topics[1]) and to (topics[2])
+                            // addresses
+                            let from_addr = Address::from_word(log.topics()[1]);
+                            let to_addr = Address::from_word(log.topics()[2]);
 
-                                // Don't commit if either from or to address is blocked
-                                if blocked_addresses.contains(&from_addr) ||
-                                    blocked_addresses.contains(&to_addr)
-                                {
-                                    return reth_evm::block::CommitChanges::No;
-                                }
+                            // Don't commit if either from or to address is blocked
+                            if blocked_addresses.contains(&from_addr) ||
+                                blocked_addresses.contains(&to_addr)
+                            {
+                                return reth_evm::block::CommitChanges::No;
                             }
                         }
                     }
