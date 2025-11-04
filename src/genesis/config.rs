@@ -26,3 +26,17 @@ pub struct Prague2Config {
     /// Minimum base fee in wei enforced after activation
     pub minimum_base_fee_wei: u64,
 }
+
+/// Configuration for Prague3 hardfork activation
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Prague3Config {
+    /// Unix timestamp when Prague3 activates
+    pub time: u64,
+    /// List of addresses that are blocked from sending or receiving ERC20 transfers
+    pub blocked_addresses: Vec<Address>,
+    /// Rescue address where blocked addresses can send ERC20 tokens
+    pub rescue_address: Address,
+    /// BEX vault address to block InternalBalanceChanged events from
+    pub bex_vault_address: Address,
+}
