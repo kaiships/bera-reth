@@ -7,7 +7,7 @@ use reth::{revm::primitives::address, rpc::types::serde_helpers::OtherFields};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use config::{Prague1Config, Prague2Config, Prague3Config};
+pub use config::{Prague1Config, Prague2Config, Prague3Config, Prague4Config};
 
 /// Errors for Berachain genesis configuration parsing
 #[derive(Debug, Error)]
@@ -35,6 +35,8 @@ pub struct BerachainGenesisConfig {
     pub prague2: Option<Prague2Config>,
     /// Configuration for the Prague3 hardfork, which blocks events from specific token contracts
     pub prague3: Option<Prague3Config>,
+    /// Configuration for the Prague4 hardfork, which ends Prague3 restrictions
+    pub prague4: Option<Prague4Config>,
 }
 
 impl Default for BerachainGenesisConfig {
@@ -52,6 +54,7 @@ impl Default for BerachainGenesisConfig {
                 minimum_base_fee_wei: 0, // 0 wei
             }),
             prague3: None, // Not activated by default
+            prague4: None, // Not activated by default
         }
     }
 }
@@ -116,7 +119,7 @@ impl TryFrom<&OtherFields> for BerachainGenesisConfig {
                 Ok(cfg)
             }
             Some(Err(e)) => Err(BerachainConfigError::InvalidConfig(e)),
-            None => Ok(Self { prague1: None, prague2: None, prague3: None }),
+            None => Ok(Self { prague1: None, prague2: None, prague3: None, prague4: None }),
         }
     }
 }

@@ -40,3 +40,11 @@ pub struct Prague3Config {
     /// BEX vault address to block InternalBalanceChanged events from
     pub bex_vault_address: Address,
 }
+
+/// Configuration for Prague4 hardfork activation
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Prague4Config {
+    /// Unix timestamp when Prague4 activates (ending Prague3 restrictions)
+    pub time: u64,
+}
