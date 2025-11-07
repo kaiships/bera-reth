@@ -1824,79 +1824,10 @@ mod tests {
 
     #[test]
     fn test_fork_id_mainnet_config() {
-        let mut genesis = Genesis::default();
-        genesis.config.chain_id = 80094;
-        genesis.config.homestead_block = Some(0);
-        genesis.config.dao_fork_block = Some(0);
-        genesis.config.dao_fork_support = true;
-        genesis.config.eip150_block = Some(0);
-        genesis.config.eip155_block = Some(0);
-        genesis.config.eip158_block = Some(0);
-        genesis.config.byzantium_block = Some(0);
-        genesis.config.constantinople_block = Some(0);
-        genesis.config.petersburg_block = Some(0);
-        genesis.config.istanbul_block = Some(0);
-        genesis.config.muir_glacier_block = Some(0);
-        genesis.config.berlin_block = Some(0);
-        genesis.config.london_block = Some(0);
-        genesis.config.arrow_glacier_block = Some(0);
-        genesis.config.gray_glacier_block = Some(0);
-        genesis.config.merge_netsplit_block = Some(0);
-        genesis.config.shanghai_time = Some(0);
-        genesis.config.cancun_time = Some(0);
-        genesis.config.prague_time = Some(1749056400);
-        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
-        genesis.config.terminal_total_difficulty_passed = true;
-
-        let extra_fields_json = json!({
-            "blobSchedule": {
-                "cancun": {
-                    "target": 3,
-                    "max": 6,
-                    "baseFeeUpdateFraction": 3338477
-                },
-                "prague": {
-                    "target": 3,
-                    "max": 6,
-                    "baseFeeUpdateFraction": 3338477
-                }
-            },
-            "berachain": {
-                "prague1": {
-                    "time": 1756915200,
-                    "baseFeeChangeDenominator": 48,
-                    "minimumBaseFeeWei": 1000000000,
-                    "polDistributorAddress": "0xD2f19a79b026Fb636A7c300bF5947df113940761"
-                },
-                "prague2": {
-                    "time": 1759248000,
-                    "minimumBaseFeeWei": 0
-                },
-                "prague3": {
-                    "time": 1762164459,
-                    "bexVaultAddress": "0x4be03f781c497a489e3cb0287833452ca9b9e80b",
-                    "blockedAddresses": [
-                        "0xF8Bec8cB704b8BD427FD209A2058b396C4BC543e",
-                        "0x9BAD77F1D527CD2D023d33eB3597A456d0c1Ab4a",
-                        "0x506D1f9EFe24f0d47853aDca907EB8d89AE03207",
-                        "0xD875De13Dc789B070a9F2a4549fbBb94cCdA4112",
-                        "0x045371528A01071D6E5C934d42D641FD3cBE941c",
-                        "0xF2b63Dbf539f4862a2eA3a04520D4E04ed5b499C",
-                        "0xF8be2BF5a14f17C897d00b57fb40EcF8b96c543e",
-                        "0x9BAD91648D4769695591853478E628bCb499AB4A"
-                    ],
-                    "rescueAddress": "0xD276D30592bE512a418f2448e23f9E7F372b32A2"
-                },
-                "prague4": {
-                    "time": 1762963200
-                }
-            },
-            "ethash": {}
-        });
-
-        genesis.config.extra_fields =
-            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
-
+        let mainnet_path =
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/mainnet-genesis.json");
+        let mainnet_json = std::fs::read_to_string(mainnet_path).unwrap();
+        let genesis: Genesis = serde_json::from_str(&mainnet_json).unwrap();
         let chain_spec = BerachainChainSpec::from(genesis);
 
         let genesis_head = Head {
@@ -1955,14 +1886,14 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", genesis_fork_id.hash),
-            "ForkHash(\"adb37a13\")",
+            "ForkHash(\"bb6c8bc0\")",
             "Genesis fork hash mismatch"
         );
         assert_eq!(genesis_fork_id.next, 1749056400, "Genesis fork next timestamp mismatch");
 
         assert_eq!(
             format!("{:?}", pre_prague_fork_id.hash),
-            "ForkHash(\"adb37a13\")",
+            "ForkHash(\"bb6c8bc0\")",
             "Pre-Prague fork hash mismatch"
         );
         assert_eq!(pre_prague_fork_id.next, 1749056400, "Pre-Prague fork next timestamp mismatch");
@@ -1970,7 +1901,7 @@ mod tests {
         // At Prague activation
         assert_eq!(
             format!("{:?}", prague_fork_id.hash),
-            "ForkHash(\"792b3d6d\")",
+            "ForkHash(\"3f78b127\")",
             "Prague fork hash mismatch"
         );
         assert_eq!(prague_fork_id.next, 1756915200, "Prague fork next timestamp mismatch");
@@ -1978,7 +1909,7 @@ mod tests {
         // At Prague1 activation
         assert_eq!(
             format!("{:?}", prague1_fork_id.hash),
-            "ForkHash(\"78a965bf\")",
+            "ForkHash(\"d2ebecac\")",
             "Prague1 fork hash mismatch"
         );
         assert_eq!(prague1_fork_id.next, 1759248000, "Prague1 fork next timestamp mismatch");
@@ -1986,7 +1917,7 @@ mod tests {
         // At Prague2 activation
         assert_eq!(
             format!("{:?}", prague2_fork_id.hash),
-            "ForkHash(\"5c02d926\")",
+            "ForkHash(\"cbbf6c9f\")",
             "Prague2 fork hash mismatch"
         );
         assert_eq!(prague2_fork_id.next, 1762164459, "Prague2 fork next timestamp mismatch");
@@ -1994,7 +1925,7 @@ mod tests {
         // At Prague3 activation
         assert_eq!(
             format!("{:?}", prague3_fork_id.hash),
-            "ForkHash(\"1a12f756\")",
+            "ForkHash(\"6494a176\")",
             "Prague3 fork hash mismatch"
         );
         assert_eq!(prague3_fork_id.next, 1762963200, "Prague3 fork next timestamp mismatch");
@@ -2010,7 +1941,7 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", prague4_fork_id.hash),
-            "ForkHash(\"47621ecf\")",
+            "ForkHash(\"701a097f\")",
             "Prague4 fork hash mismatch"
         );
         assert_eq!(
