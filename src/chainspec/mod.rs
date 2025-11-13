@@ -1,7 +1,7 @@
 //! Berachain chain specification with Ethereum hardforks plus Prague1 minimum base fee
 
 use crate::{
-    genesis::BerachainGenesisConfig,
+    genesis::{BerachainGenesisConfig, Prague3Config, Prague4Config},
     hardforks::{BerachainHardfork, BerachainHardforks},
     primitives::{BerachainHeader, header::BlsPublicKey},
 };
@@ -45,11 +45,42 @@ pub struct BerachainChainSpec {
     pub prague1_minimum_base_fee: u64,
     /// The minimum base fee in wei for Prague2
     pub prague2_minimum_base_fee: u64,
+    /// Prague3 configuration (if configured)
+    pub prague3_config: Option<Prague3Config>,
+    /// Prague4 configuration (if configured)
+    pub prague4_config: Option<Prague4Config>,
 }
 
 impl BerachainChainSpec {
     pub fn pol_contract(&self) -> Address {
         self.pol_contract_address
+    }
+
+    /// Get blocked addresses for Prague3 if the hardfork is active
+    pub fn prague3_blocked_addresses_at_timestamp(&self, timestamp: u64) -> Option<&[Address]> {
+        if self.is_prague3_active_at_timestamp(timestamp) {
+            self.prague3_config.as_ref().map(|cfg| cfg.blocked_addresses.as_slice())
+        } else {
+            None
+        }
+    }
+
+    /// Get rescue address for Prague3 if the hardfork is active
+    pub fn prague3_rescue_address_at_timestamp(&self, timestamp: u64) -> Option<Address> {
+        if self.is_prague3_active_at_timestamp(timestamp) {
+            self.prague3_config.as_ref().map(|cfg| cfg.rescue_address)
+        } else {
+            None
+        }
+    }
+
+    /// Get BEX vault address for Prague3 if the hardfork is active
+    pub fn prague3_bex_vault_address_at_timestamp(&self, timestamp: u64) -> Option<Address> {
+        if self.is_prague3_active_at_timestamp(timestamp) {
+            self.prague3_config.as_ref().map(|cfg| cfg.bex_vault_address)
+        } else {
+            None
+        }
     }
 
     /// Get the fork id for the given hardfork.
@@ -286,7 +317,24 @@ impl EthChainSpec for BerachainChainSpec {
             _ => "\nPrague2 Misconfigured".to_string(),
         };
 
-        Box::new(format!("{inner_display}{prague1_details}{prague2_details}"))
+        let prague3_details = if let Some(prague3_config) = &self.prague3_config {
+            let blocked_addrs: Vec<String> = prague3_config
+                .blocked_addresses
+                .iter()
+                .map(|addr| format!("{:#x}", addr))
+                .collect();
+            format!(
+                "\nBerachain Prague3 configuration: {{time={}, blocked_addresses=[{}], rescue_address={}, bex_vault_address={}}}",
+                prague3_config.time,
+                blocked_addrs.join(", "),
+                prague3_config.rescue_address,
+                prague3_config.bex_vault_address
+            )
+        } else {
+            String::new()
+        };
+
+        Box::new(format!("{inner_display}{prague1_details}{prague2_details}{prague3_details}"))
     }
 
     fn genesis_header(&self) -> &Self::Header {
@@ -399,6 +447,8 @@ impl BerachainChainSpec {
             pol_contract_address: Address::ZERO,
             prague1_minimum_base_fee: 0,
             prague2_minimum_base_fee: 0,
+            prague3_config: None,
+            prague4_config: None,
         }
     }
 }
@@ -416,9 +466,11 @@ impl From<Genesis> for BerachainChainSpec {
             return Self::ethereum_fallback(genesis);
         }
 
-        // Parse Prague1 and Prague2 configurations if present
+        // Parse Prague1, Prague2, Prague3, and Prague4 configurations if present
         let prague1_config_opt = berachain_genesis_config.prague1;
         let prague2_config_opt = berachain_genesis_config.prague2;
+        let prague3_config_opt = berachain_genesis_config.prague3;
+        let prague4_config_opt = berachain_genesis_config.prague4;
 
         // Both Prague1 and Prague2 are required for Berachain genesis
         let (prague1_config, prague2_config) = match (prague1_config_opt, prague2_config_opt) {
@@ -497,6 +549,30 @@ impl From<Genesis> for BerachainChainSpec {
             );
         }
 
+        // Validate Prague3 ordering if configured (Prague3 must come at or after Prague2)
+        if let Some(prague3_config) = prague3_config_opt.as_ref() &&
+            prague3_config.time < prague2_config.time
+        {
+            panic!(
+                "Prague3 hardfork must activate at or after Prague2 hardfork. Prague2 time: {}, Prague3 time: {}.",
+                prague2_config.time, prague3_config.time
+            );
+        }
+
+        // Validate Prague4 ordering if configured (Prague4 must come at or after Prague3)
+        if let Some(prague4_config) = prague4_config_opt.as_ref() {
+            if let Some(prague3_config) = prague3_config_opt.as_ref() {
+                if prague4_config.time < prague3_config.time {
+                    panic!(
+                        "Prague4 hardfork must activate at or after Prague3 hardfork. Prague3 time: {}, Prague4 time: {}.",
+                        prague3_config.time, prague4_config.time
+                    );
+                }
+            } else {
+                panic!("Prague4 hardfork requires Prague3 hardfork to be configured");
+            }
+        }
+
         // Berachain networks don't support proof-of-work or non-genesis merge
         if let Some(ttd) = genesis.config.terminal_total_difficulty {
             if !ttd.is_zero() {
@@ -569,6 +645,22 @@ impl From<Genesis> for BerachainChainSpec {
             BerachainHardfork::Prague2.boxed(),
             ForkCondition::Timestamp(prague2_config.time),
         ));
+
+        // Add Prague3 if configured
+        if let Some(prague3_config) = prague3_config_opt.as_ref() {
+            hardforks.push((
+                BerachainHardfork::Prague3.boxed(),
+                ForkCondition::Timestamp(prague3_config.time),
+            ));
+        }
+
+        // Add Prague4 if configured
+        if let Some(prague4_config) = prague4_config_opt.as_ref() {
+            hardforks.push((
+                BerachainHardfork::Prague4.boxed(),
+                ForkCondition::Timestamp(prague4_config.time),
+            ));
+        }
 
         if let Some(osaka_time) = genesis.config.osaka_time {
             hardforks.push((EthereumHardfork::Osaka.boxed(), ForkCondition::Timestamp(osaka_time)));
@@ -656,6 +748,8 @@ impl From<Genesis> for BerachainChainSpec {
             pol_contract_address,
             prague1_minimum_base_fee,
             prague2_minimum_base_fee,
+            prague3_config: prague3_config_opt,
+            prague4_config: prague4_config_opt,
         }
     }
 }
@@ -1232,6 +1326,115 @@ mod tests {
     }
 
     #[test]
+    fn test_valid_prague4_after_prague3() {
+        // Test that Prague4 can be properly configured after Prague3
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                },
+                "prague2": {
+                    "time": 1000,
+                    "minimumBaseFeeWei": 0
+                },
+                "prague3": {
+                    "time": 2000,
+                    "blockedAddresses": [
+                        "0x1111111111111111111111111111111111111111"
+                    ],
+                    "rescueAddress": "0x9999999999999999999999999999999999999999",
+                    "bexVaultAddress": "0xBE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0B"
+                },
+                "prague4": {
+                    "time": 3000
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Prague4 should be properly configured
+        assert!(chain_spec.is_prague4_active_at_timestamp(3000));
+        assert!(!chain_spec.is_prague4_active_at_timestamp(2999));
+    }
+
+    #[test]
+    #[should_panic(expected = "Prague4 hardfork requires Prague3 hardfork to be configured")]
+    fn test_panic_on_prague4_without_prague3() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                },
+                "prague2": {
+                    "time": 1000,
+                    "minimumBaseFeeWei": 0
+                },
+                "prague4": {
+                    "time": 3000
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Prague4 hardfork must activate at or after Prague3 hardfork. Prague3 time: 3000, Prague4 time: 2000."
+    )]
+    fn test_panic_on_prague4_before_prague3() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                },
+                "prague2": {
+                    "time": 1000,
+                    "minimumBaseFeeWei": 0
+                },
+                "prague3": {
+                    "time": 3000,
+                    "blockedAddresses": [
+                        "0x1111111111111111111111111111111111111111"
+                    ],
+                    "rescueAddress": "0x9999999999999999999999999999999999999999",
+                    "bexVaultAddress": "0xBE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0B"
+                },
+                "prague4": {
+                    "time": 2000
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+        let _chain_spec = BerachainChainSpec::from(genesis);
+    }
+
+    #[test]
     #[should_panic(
         expected = "Berachain networks require terminal total difficulty of 0 (merge at genesis)"
     )]
@@ -1726,6 +1929,71 @@ mod tests {
     }
 
     #[test]
+    fn test_prague4_ends_prague3_restrictions() {
+        let mut genesis = Genesis::default();
+        genesis.config.cancun_time = Some(0);
+        genesis.config.prague_time = Some(0);
+        genesis.config.terminal_total_difficulty = Some(U256::ZERO);
+        let extra_fields_json = json!({
+            "berachain": {
+                "prague1": {
+                    "time": 0,
+                    "baseFeeChangeDenominator": 48,
+                    "minimumBaseFeeWei": 1000000000,
+                    "polDistributorAddress": "0x4200000000000000000000000000000000000042"
+                },
+                "prague2": {
+                    "time": 1000,
+                    "minimumBaseFeeWei": 0
+                },
+                "prague3": {
+                    "time": 2000,
+                    "blockedAddresses": [
+                        "0x1111111111111111111111111111111111111111",
+                        "0x2222222222222222222222222222222222222222"
+                    ],
+                    "rescueAddress": "0x9999999999999999999999999999999999999999",
+                    "bexVaultAddress": "0xBE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0BE0B"
+                },
+                "prague4": {
+                    "time": 3000
+                }
+            }
+        });
+        genesis.config.extra_fields =
+            reth::rpc::types::serde_helpers::OtherFields::try_from(extra_fields_json).unwrap();
+
+        let chain_spec = BerachainChainSpec::from(genesis);
+
+        // Before Prague3 (timestamp 1500)
+        assert!(!chain_spec.is_prague3_active_at_timestamp(1500));
+        assert!(!chain_spec.is_prague4_active_at_timestamp(1500));
+
+        // Prague3 active (timestamp 2000-2999)
+        assert!(chain_spec.is_prague3_active_at_timestamp(2000));
+        assert!(!chain_spec.is_prague4_active_at_timestamp(2000));
+
+        assert!(chain_spec.is_prague3_active_at_timestamp(2500));
+        assert!(!chain_spec.is_prague4_active_at_timestamp(2500));
+
+        assert!(chain_spec.is_prague3_active_at_timestamp(2999));
+        assert!(!chain_spec.is_prague4_active_at_timestamp(2999));
+
+        // Prague4 active, Prague3 ends (timestamp 3000+)
+        assert!(!chain_spec.is_prague3_active_at_timestamp(3000));
+        assert!(chain_spec.is_prague4_active_at_timestamp(3000));
+
+        assert!(!chain_spec.is_prague3_active_at_timestamp(3500));
+        assert!(chain_spec.is_prague4_active_at_timestamp(3500));
+
+        // Verify blocked addresses are only returned during Prague3
+        assert!(chain_spec.prague3_blocked_addresses_at_timestamp(1999).is_none());
+        assert!(chain_spec.prague3_blocked_addresses_at_timestamp(2000).is_some());
+        assert!(chain_spec.prague3_blocked_addresses_at_timestamp(2999).is_some());
+        assert!(chain_spec.prague3_blocked_addresses_at_timestamp(3000).is_none());
+    }
+
+    #[test]
     fn test_fork_id_genesis_config() {
         let create_genesis = |prague1_time: u64, prague2_time: u64| {
             let mut genesis = Genesis::default();
@@ -1868,9 +2136,10 @@ mod tests {
         let spec = BerachainChainSpec::from(genesis);
 
         // Test cases matching bera-geth mainnet test:
-        // Prague at 1749056400, Prague1 at 1756915200, Prague2 at 1759248000
+        // Prague at 1749056400, Prague1 at 1756915200, Prague2 at 1759248000,
+        // Prague3 at 1762164459, Prague4 at 1762963200
 
-        // Genesis state - all forks active except Prague/Prague1/Prague2
+        // Genesis state - all forks active except Prague/Prague1/Prague2/Prague3/Prague4
         let head_genesis = Head {
             number: 0,
             hash: B256::ZERO,
@@ -1906,13 +2175,31 @@ mod tests {
             timestamp: 1756915200,
         };
 
-        // Prague2 active
+        // Prague2 active, before Prague3
         let head_prague2_active = Head {
             number: 100,
             hash: B256::ZERO,
             difficulty: Default::default(),
             total_difficulty: Default::default(),
             timestamp: 1759248000,
+        };
+
+        // Prague3 active, before Prague4
+        let head_prague3_active = Head {
+            number: 100,
+            hash: B256::ZERO,
+            difficulty: Default::default(),
+            total_difficulty: Default::default(),
+            timestamp: 1762164459,
+        };
+
+        // Prague4 active
+        let head_prague4_active = Head {
+            number: 100,
+            hash: B256::ZERO,
+            difficulty: Default::default(),
+            total_difficulty: Default::default(),
+            timestamp: 1762963200,
         };
 
         // Far future
@@ -1930,6 +2217,8 @@ mod tests {
         let fork_id_prague = spec.fork_id(&head_prague_active);
         let fork_id_prague1 = spec.fork_id(&head_prague1_active);
         let fork_id_prague2 = spec.fork_id(&head_prague2_active);
+        let fork_id_prague3 = spec.fork_id(&head_prague3_active);
+        let fork_id_prague4 = spec.fork_id(&head_prague4_active);
         let fork_id_future = spec.fork_id(&head_far_future);
 
         // Test fork_filter at each stage
@@ -1938,6 +2227,8 @@ mod tests {
         let fork_filter_prague = spec.fork_filter(head_prague_active);
         let fork_filter_prague1 = spec.fork_filter(head_prague1_active);
         let fork_filter_prague2 = spec.fork_filter(head_prague2_active);
+        let fork_filter_prague3 = spec.fork_filter(head_prague3_active);
+        let fork_filter_prague4 = spec.fork_filter(head_prague4_active);
         let fork_filter_future = spec.fork_filter(head_far_future);
 
         // Verify fork_filter.current() matches fork_id() at each stage
@@ -1946,6 +2237,8 @@ mod tests {
         assert_eq!(fork_filter_prague.current(), fork_id_prague);
         assert_eq!(fork_filter_prague1.current(), fork_id_prague1);
         assert_eq!(fork_filter_prague2.current(), fork_id_prague2);
+        assert_eq!(fork_filter_prague3.current(), fork_id_prague3);
+        assert_eq!(fork_filter_prague4.current(), fork_id_prague4);
         assert_eq!(fork_filter_future.current(), fork_id_future);
 
         // Verify next fork schedule matches mainnet configuration
@@ -1953,7 +2246,9 @@ mod tests {
         assert_eq!(fork_id_before_prague.next, 1749056400, "next fork should be Prague");
         assert_eq!(fork_id_prague.next, 1756915200, "next fork should be Prague1");
         assert_eq!(fork_id_prague1.next, 1759248000, "next fork should be Prague2");
-        assert_eq!(fork_id_prague2.next, 0, "no next fork after Prague2");
+        assert_eq!(fork_id_prague2.next, 1762164459, "next fork should be Prague3");
+        assert_eq!(fork_id_prague3.next, 1762963200, "next fork should be Prague4");
+        assert_eq!(fork_id_prague4.next, 0, "no next fork after Prague4");
         assert_eq!(fork_id_future.next, 0, "no next fork in far future");
 
         // Expected fork hash values for mainnet (matching bera-geth test values)
@@ -1962,7 +2257,9 @@ mod tests {
         assert_eq!(fork_id_prague.hash, ForkHash([0x3f, 0x78, 0xb1, 0x27]));
         assert_eq!(fork_id_prague1.hash, ForkHash([0xd2, 0xeb, 0xec, 0xac]));
         assert_eq!(fork_id_prague2.hash, ForkHash([0xcb, 0xbf, 0x6c, 0x9f]));
-        assert_eq!(fork_id_future.hash, ForkHash([0xcb, 0xbf, 0x6c, 0x9f]));
+        assert_eq!(fork_id_prague3.hash, ForkHash([0x64, 0x94, 0xa1, 0x76]));
+        assert_eq!(fork_id_prague4.hash, ForkHash([0x70, 0x1a, 0x09, 0x7f]));
+        assert_eq!(fork_id_future.hash, ForkHash([0x70, 0x1a, 0x09, 0x7f]));
     }
 
     #[test]
@@ -2013,7 +2310,7 @@ mod tests {
                 "prague2": {
                     "time": 0,
                     "minimumBaseFeeWei": 0
-                }
+                },
             }
         });
         genesis.config.extra_fields =
