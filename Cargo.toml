@@ -31,6 +31,9 @@ derive_more = "2.0.1"
 eyre = "0.6.12"
 sha2 = "0.10"
 
+# rblib for advanced block building
+rblib = { git = "https://github.com/flashbots/rblib", version = "0.3.1", default-features = false }
+
 # rpc
 jsonrpsee = "0.26.0"
 jsonrpsee-core = { version = "0.26.0", features = ["server"] }

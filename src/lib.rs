@@ -11,6 +11,7 @@ pub mod hardforks;
 pub mod node;
 pub mod pool;
 pub mod primitives;
+pub mod rblib_integration;
 pub mod rpc;
 pub mod sequencer;
 #[cfg(test)]
