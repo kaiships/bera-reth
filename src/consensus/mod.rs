@@ -1,9 +1,12 @@
 use crate::{
     chainspec::BerachainChainSpec,
     hardforks::BerachainHardforks,
+    node::evm::error::BerachainExecutionError,
     primitives::{BerachainBlock, BerachainHeader, BerachainPrimitives},
     transaction::{BerachainTxEnvelope, pol::validate_pol_transaction},
 };
+use alloy_consensus::BlockHeader;
+use alloy_primitives::Address;
 use reth::{
     api::NodeTypes,
     beacon_consensus::EthBeaconConsensus,
@@ -110,7 +113,104 @@ impl FullConsensus<BerachainPrimitives> for BerachainBeaconConsensus {
         block: &RecoveredBlock<BerachainBlock>,
         result: &BlockExecutionResult<<BerachainPrimitives as NodePrimitives>::Receipt>,
     ) -> Result<(), ConsensusError> {
-        <EthBeaconConsensus<BerachainChainSpec> as FullConsensus<BerachainPrimitives>>::validate_block_post_execution(&self.inner, block, result)
+        // First run the standard validation
+        <EthBeaconConsensus<BerachainChainSpec> as FullConsensus<BerachainPrimitives>>::validate_block_post_execution(&self.inner, block, result)?;
+
+        // Check for Prague3 blocked address transfers if the hardfork is active
+        let timestamp = block.header().timestamp();
+        if let Some(blocked_addresses) =
+            self.chain_spec.prague3_blocked_addresses_at_timestamp(timestamp)
+        {
+            let rescue_address = self.chain_spec.prague3_rescue_address_at_timestamp(timestamp);
+            let bex_vault_address =
+                self.chain_spec.prague3_bex_vault_address_at_timestamp(timestamp);
+
+            // ERC20 Transfer event signature: Transfer(address,address,uint256)
+            const TRANSFER_EVENT_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
+                "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            );
+
+            // Check all receipts for ERC20 Transfer events involving blocked addresses or BEX vault
+            for receipt in &result.receipts {
+                for log in &receipt.logs {
+                    // Check if this is a Transfer event (first topic is the event signature)
+                    if log.topics().first() == Some(&TRANSFER_EVENT_SIGNATURE) &&
+                        log.topics().len() >= 3
+                    {
+                        // Transfer event has indexed from (topics[1]) and to (topics[2]) addresses
+                        let from_addr = Address::from_word(log.topics()[1]);
+                        let to_addr = Address::from_word(log.topics()[2]);
+
+                        // Check if BEX vault is involved in the transfer (block all BEX vault
+                        // transfers)
+                        if let Some(bex_vault) = bex_vault_address &&
+                            (from_addr == bex_vault || to_addr == bex_vault)
+                        {
+                            return Err(ConsensusError::Other(
+                                BerachainExecutionError::Prague3BexVaultTransfer {
+                                    vault_address: bex_vault,
+                                }
+                                .to_string(),
+                            ));
+                        }
+
+                        // Check if from address is blocked
+                        if blocked_addresses.contains(&from_addr) {
+                            // Blocked addresses can only send to rescue address
+                            if rescue_address != Some(to_addr) {
+                                return Err(ConsensusError::Other(
+                                    BerachainExecutionError::Prague3BlockedAddressTransfer {
+                                        blocked_address: from_addr,
+                                    }
+                                    .to_string(),
+                                ));
+                            }
+                        }
+
+                        // Check if to address is blocked (blocked addresses cannot receive)
+                        if blocked_addresses.contains(&to_addr) {
+                            return Err(ConsensusError::Other(
+                                BerachainExecutionError::Prague3BlockedAddressTransfer {
+                                    blocked_address: to_addr,
+                                }
+                                .to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for Prague3 BEX vault InternalBalanceChanged events if the hardfork is active
+        if let Some(bex_vault_address) =
+            self.chain_spec.prague3_bex_vault_address_at_timestamp(timestamp)
+        {
+            // InternalBalanceChanged event signature:
+            // InternalBalanceChanged(address,address,int256)
+            const INTERNAL_BALANCE_CHANGED_SIGNATURE: alloy_primitives::B256 = alloy_primitives::b256!(
+                "18e1ea4139e68413d7d08aa752e71568e36b2c5bf940893314c2c5b01eaa0c42"
+            );
+
+            // Check all receipts for InternalBalanceChanged events from BEX vault
+            for receipt in &result.receipts {
+                for log in &receipt.logs {
+                    // Check if this log is from the BEX vault and is an InternalBalanceChanged
+                    // event
+                    if log.address == bex_vault_address &&
+                        log.topics().first() == Some(&INTERNAL_BALANCE_CHANGED_SIGNATURE)
+                    {
+                        return Err(ConsensusError::Other(
+                            BerachainExecutionError::Prague3BexVaultEvent {
+                                vault_address: bex_vault_address,
+                            }
+                            .to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

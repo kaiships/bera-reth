@@ -3,6 +3,7 @@ use crate::{
     engine::payload::{
         BerachainBuiltPayload, BerachainPayloadAttributes, BerachainPayloadBuilderAttributes,
     },
+    hardforks::BerachainHardforks,
     node::evm::config::{BerachainEvmConfig, BerachainNextBlockEnvAttributes},
     primitives::{BerachainHeader, BerachainPrimitives},
     transaction::BerachainTxEnvelope,
@@ -245,6 +246,14 @@ where
 
     let is_osaka = chain_spec.is_osaka_active_at_timestamp(attributes.timestamp);
 
+    // Check if Prague3 is active and skip all transactions if so
+    if chain_spec.is_prague3_active_at_timestamp(attributes.timestamp()) {
+        warn!(target: "payload_builder", "Prague3 is active, building payload without transactions is not supported");
+        return Err(PayloadBuilderError::Other(Box::from(
+            "Prague 3 block building is not supported",
+        )))
+    }
+    // Skip all transactions and proceed to finalize the empty block
     while let Some(pool_tx) = best_txs.next() {
         // ensure we still have capacity for this transaction
         if cumulative_gas_used + pool_tx.gas_limit() > block_gas_limit {
@@ -335,6 +344,7 @@ where
             };
         }
 
+        // Execute the transaction
         let gas_used = match builder.execute_transaction(tx.clone()) {
             Ok(gas_used) => gas_used,
             Err(BlockExecutionError::Validation(BlockValidationError::InvalidTx {
