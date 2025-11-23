@@ -30,8 +30,8 @@ use reth_node_builder::{Node, NodeHandle};
 use std::sync::Arc;
 use tracing::info;
 
-/// Example Berachain Sequencer with Revert Protection
-fn build_sequencer_pipeline(pool: &OrderPool<BerachainPlatform>) -> Pipeline<BerachainPlatform> {
+/// Example Berachain builder pipeline with Revert Protection
+fn berachain_builder_pipeline(pool: &OrderPool<BerachainPlatform>) -> Pipeline<BerachainPlatform> {
     let pipeline = Pipeline::<BerachainPlatform>::named("classic").with_pipeline(
         Loop,
         (
