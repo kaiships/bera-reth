@@ -21,7 +21,7 @@ use rblib::{
     prelude::{Loop, Pipeline},
     steps::OrderByPriorityFee,
 };
-use reth::CliRunner;
+use reth::{CliRunner, revm::interpreter::instructions::arithmetic::add};
 use reth_cli_commands::node::NoArgs;
 use reth_ethereum_cli::Cli;
 use reth_node_builder::{Node, NodeHandle};
@@ -69,6 +69,7 @@ fn main() {
                 let pool = OrderPool::<BerachainPlatform>::default();
                 let pipeline = build_sequencer_pipeline(&pool);
                 let berachain_node = BerachainNode::default();
+                let add_ons = berachain_node.add_ons();
 
                 let NodeHandle { node: _node, node_exit_future } = builder
                     .with_types::<BerachainNode>()
@@ -78,7 +79,7 @@ fn main() {
                             .attach_pool(&pool)
                             .payload(pipeline.into_service()),
                     )
-                    .with_add_ons(berachain_node.add_ons())
+                    .with_add_ons(add_ons)
                     .launch_with_debug_capabilities()
                     .await?;
 
