@@ -65,11 +65,9 @@ reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-core = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-node-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-payload-validator = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-convert = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
 reth-rpc-engine-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.8.2" }
@@ -79,7 +77,6 @@ reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1
 serde = { version = "1.0", features = ["derive"], default-features = false }
 thiserror = "2.0"
 tokio = "1.46.0"
-tokio-util = "0.7"
 tracing = "0.1.41"
 
 [dev-dependencies]

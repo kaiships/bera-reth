@@ -11,17 +11,35 @@ use bera_reth::{
     chainspec::{BerachainChainSpec, BerachainChainSpecParser},
     consensus::BerachainBeaconConsensus,
     evm::BerachainEvmFactory,
-    node::evm::config::BerachainEvmConfig,
-    sequencer::SequencerNode,
+    node::{BerachainNode, evm::config::BerachainEvmConfig},
+    rblib_integration::BerachainPlatform,
     version::init_bera_version,
 };
 use clap::Parser;
+use rblib::{
+    pool::{AppendOrders, OrderPool},
+    prelude::{Loop, Pipeline},
+    steps::OrderByPriorityFee,
+};
 use reth::CliRunner;
 use reth_cli_commands::node::NoArgs;
 use reth_ethereum_cli::Cli;
-use reth_node_builder::NodeHandle;
+use reth_node_builder::{Node, NodeHandle};
 use std::sync::Arc;
 use tracing::info;
+
+/// Basic block builder
+///
+/// Block building strategy that builds blocks using the classic approach by
+/// prepending sequencer transactions, then ordering the rest of the
+/// transactions by tip.
+fn build_sequencer_pipeline(pool: &OrderPool<BerachainPlatform>) -> Pipeline<BerachainPlatform> {
+    let pipeline = Pipeline::<BerachainPlatform>::named("classic")
+        .with_pipeline(Loop, (AppendOrders::from_pool(pool), OrderByPriorityFee::default()));
+
+    pool.attach_pipeline(&pipeline);
+    pipeline
+}
 
 fn main() {
     // Install signal handler for better crash reporting
@@ -43,13 +61,23 @@ fn main() {
     };
 
     if let Err(err) = Cli::<BerachainChainSpecParser, NoArgs>::parse()
-        .with_runner_and_components::<SequencerNode>(
+        .with_runner_and_components::<BerachainNode>(
             CliRunner::try_default_runtime().expect("Failed to create default runtime"),
             cli_components_builder,
             async move |builder, _| {
                 info!(target: "reth::cli", "Launching Berachain Sequencer node");
-                let NodeHandle { node: _node, node_exit_future } =
-                    builder.node(SequencerNode).launch_with_debug_capabilities().await?;
+                let pool = OrderPool::<BerachainPlatform>::default();
+                let pipeline = build_sequencer_pipeline(&pool);
+                let berachain_node = BerachainNode::default();
+
+                let NodeHandle { node: _node, node_exit_future } = builder
+                    .with_types::<BerachainNode>()
+                    .with_components(
+                        berachain_node.components_builder().payload(pipeline.into_service()),
+                    )
+                    .with_add_ons(berachain_node.add_ons())
+                    .launch_with_debug_capabilities()
+                    .await?;
 
                 node_exit_future.await
             },
@@ -59,3 +87,15 @@ fn main() {
         std::process::exit(1);
     }
 }
+
+/*
+   pub fn node<N>(
+       self,
+       node: N,
+   ) -> NodeBuilderWithComponents<RethFullAdapter<DB, N>, N::ComponentsBuilder, N::AddOns>
+   where
+       N: Node<RethFullAdapter<DB, N>, ChainSpec = ChainSpec> + NodeTypesForProvider,
+   {
+       self.with_types().with_components(node.components_builder()).with_add_ons(node.add_ons())
+   }
+*/
