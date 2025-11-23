@@ -72,8 +72,7 @@ fn main() {
                 let pipeline = build_sequencer_pipeline(&pool);
                 let berachain_node = BerachainNode::default();
 
-                // Construct add-ons with explicit type parameters to allow inference of the complex
-                // pool type
+                // Helps compiler
                 let add_ons: BerachainAddOns<
                     _,
                     BerachainEthApiBuilder,
@@ -90,7 +89,7 @@ fn main() {
                             .payload(pipeline.into_service()),
                     )
                     .with_add_ons(add_ons)
-                    .launch()
+                    .launch_with_debug_capabilities()
                     .await?;
 
                 node_exit_future.await
