@@ -196,8 +196,6 @@ where
         )
         .map_err(PayloadBuilderError::other)?;
 
-    // let chain_spec = client.chain_spec();
-
     debug!(target: "payload_builder", id=%attributes.id, parent_header = ?parent_header.hash(), parent_number = parent_header.number, "building new payload");
     let mut cumulative_gas_used = 0;
     let block_gas_limit: u64 = builder.evm_mut().block().gas_limit;
