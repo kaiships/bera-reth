@@ -17,7 +17,7 @@ use bera_reth::{
 };
 use clap::Parser;
 use rblib::{
-    pool::{AppendOrders, OrderPool},
+    pool::{AppendOrders, HostNodeInstaller, OrderPool},
     prelude::{Loop, Pipeline},
     steps::OrderByPriorityFee,
 };
@@ -73,7 +73,10 @@ fn main() {
                 let NodeHandle { node: _node, node_exit_future } = builder
                     .with_types::<BerachainNode>()
                     .with_components(
-                        berachain_node.components_builder().payload(pipeline.into_service()),
+                        berachain_node
+                            .components_builder()
+                            .attach_pool(&pool)
+                            .payload(pipeline.into_service()),
                     )
                     .with_add_ons(berachain_node.add_ons())
                     .launch_with_debug_capabilities()
@@ -87,15 +90,3 @@ fn main() {
         std::process::exit(1);
     }
 }
-
-/*
-   pub fn node<N>(
-       self,
-       node: N,
-   ) -> NodeBuilderWithComponents<RethFullAdapter<DB, N>, N::ComponentsBuilder, N::AddOns>
-   where
-       N: Node<RethFullAdapter<DB, N>, ChainSpec = ChainSpec> + NodeTypesForProvider,
-   {
-       self.with_types().with_components(node.components_builder()).with_add_ons(node.add_ons())
-   }
-*/
