@@ -31,7 +31,8 @@ derive_more = "2.0.1"
 eyre = "0.6.12"
 sha2 = "0.10"
 
-rblib = { git = "https://github.com/flashbots/rblib", version = "0.3.1", default-features = false }
+# Requires minor modifications to rblib such that `FixedTransactions` is public
+rblib = { path = "../rblib", features = ["optimism"] }
 
 # rpc
 jsonrpsee = "0.26.0"

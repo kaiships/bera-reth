@@ -13,6 +13,7 @@ use crate::{
     },
     pool::transaction::BerachainPooledTransaction,
     primitives::BerachainHeader,
+    rblib_integration::platform::pool::FixedTransactions,
     transaction::BerachainTxEnvelope,
 };
 use alloy_consensus::Transaction;
@@ -47,7 +48,8 @@ use reth_evm::{
 use reth_payload_primitives::PayloadBuilderAttributes;
 use reth_primitives_traits::transaction::error::InvalidTransactionError;
 use reth_transaction_pool::{
-    BestTransactionsAttributes, BestTransactionsFor, PoolTransaction, TransactionPool,
+    BestTransactions, BestTransactionsAttributes, BestTransactionsFor, PoolTransaction,
+    TransactionPool, ValidPoolTransaction,
     error::{Eip4844PoolTransactionError, InvalidPoolTransactionError},
     noop::NoopTransactionPool,
 };
@@ -129,7 +131,14 @@ impl Platform for BerachainPlatform {
             NoopTransactionPool::new(),
             &builder_config,
             build_args,
-            || self.pool.best_transactions_with_attributes(attributes),
+            || {
+                transactions
+                    as Box<
+                        dyn BestTransactions<
+                            Item = Arc<ValidPoolTransaction<Self::PooledTransaction>>,
+                        >,
+                    >
+            },
         )?
         .into_payload()
         .ok_or_else(|| PayloadBuilderError::MissingPayload)
