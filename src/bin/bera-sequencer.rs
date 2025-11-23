@@ -10,9 +10,11 @@ static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::ne
 use bera_reth::{
     chainspec::{BerachainChainSpec, BerachainChainSpecParser},
     consensus::BerachainBeaconConsensus,
+    engine::{rpc::BerachainEngineApiBuilder, validator::BerachainEngineValidatorBuilder},
     evm::BerachainEvmFactory,
     node::{BerachainNode, evm::config::BerachainEvmConfig},
     platform::BerachainPlatform,
+    rpc::{BerachainAddOns, BerachainEthApiBuilder},
     version::init_bera_version,
 };
 use clap::Parser;
@@ -21,7 +23,7 @@ use rblib::{
     prelude::{Loop, Pipeline},
     steps::OrderByPriorityFee,
 };
-use reth::{CliRunner, revm::interpreter::instructions::arithmetic::add};
+use reth::CliRunner;
 use reth_cli_commands::node::NoArgs;
 use reth_ethereum_cli::Cli;
 use reth_node_builder::{Node, NodeHandle};
@@ -69,7 +71,15 @@ fn main() {
                 let pool = OrderPool::<BerachainPlatform>::default();
                 let pipeline = build_sequencer_pipeline(&pool);
                 let berachain_node = BerachainNode::default();
-                let add_ons = berachain_node.add_ons();
+
+                // Construct add-ons with explicit type parameters to allow inference of the complex
+                // pool type
+                let add_ons: BerachainAddOns<
+                    _,
+                    BerachainEthApiBuilder,
+                    BerachainEngineValidatorBuilder,
+                    BerachainEngineApiBuilder<BerachainEngineValidatorBuilder>,
+                > = BerachainAddOns::default();
 
                 let NodeHandle { node: _node, node_exit_future } = builder
                     .with_types::<BerachainNode>()
@@ -80,7 +90,7 @@ fn main() {
                             .payload(pipeline.into_service()),
                     )
                     .with_add_ons(add_ons)
-                    .launch_with_debug_capabilities()
+                    .launch()
                     .await?;
 
                 node_exit_future.await
