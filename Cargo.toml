@@ -32,7 +32,7 @@ eyre = "0.6.12"
 sha2 = "0.10"
 
 # Requires minor modifications to rblib such that `FixedTransactions` is public
-rblib = { path = "../rblib", features = ["optimism"] }
+rblib = { path = "../rblib", default-features = false }
 
 # rpc
 jsonrpsee = "0.26.0"

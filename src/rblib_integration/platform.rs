@@ -3,7 +3,6 @@ use crate::{
     chainspec::BerachainChainSpec,
     engine::{
         BerachainEngineTypes,
-        builder::default_berachain_payload,
         payload::{BerachainBuiltPayload, BerachainPayloadBuilderAttributes},
     },
     hardforks::BerachainHardforks,
@@ -17,7 +16,7 @@ use crate::{
     transaction::BerachainTxEnvelope,
 };
 use alloy_consensus::Transaction;
-use alloy_eips::eip1559::{ETHEREUM_BLOCK_GAS_LIMIT, ETHEREUM_BLOCK_GAS_LIMIT_30M};
+use alloy_eips::eip1559::ETHEREUM_BLOCK_GAS_LIMIT_30M;
 use alloy_primitives::U256;
 use alloy_rlp::Encodable;
 use rblib::{
@@ -29,15 +28,14 @@ use rblib::{
     reth::{
         errors::{BlockExecutionError, BlockValidationError, ConsensusError},
         ethereum::{
-            chainspec::EthereumHardforks,
-            evm::revm::database::StateProviderDatabase,
-            provider::{StateProvider, StateProviderFactory},
+            chainspec::EthereumHardforks, evm::revm::database::StateProviderDatabase,
+            provider::StateProvider,
         },
     },
 };
 use reth::api::PayloadTypes;
 use reth_basic_payload_builder::{BuildArguments, BuildOutcome, PayloadConfig, is_better_payload};
-use reth_chainspec::{ChainSpecProvider, EthChainSpec};
+use reth_chainspec::EthChainSpec;
 use reth_consensus_common::validation::MAX_RLP_BLOCK_SIZE;
 use reth_ethereum_engine_primitives::BlobSidecars;
 use reth_ethereum_payload_builder::EthereumBuilderConfig;
@@ -96,7 +94,7 @@ impl Platform for BerachainPlatform {
             gas_limit: ETHEREUM_BLOCK_GAS_LIMIT_30M, // TODO: Get from config
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             withdrawals: Some(attributes.withdrawals.clone()),
-            prev_proposer_pubkey: attributes.prev_proposer_pubkey.clone(),
+            prev_proposer_pubkey: attributes.prev_proposer_pubkey,
         }
     }
 
@@ -131,7 +129,7 @@ impl Platform for BerachainPlatform {
             NoopTransactionPool::new(),
             &builder_config,
             build_args,
-            || {
+            |_| {
                 transactions
                     as Box<
                         dyn BestTransactions<
@@ -146,7 +144,7 @@ impl Platform for BerachainPlatform {
 }
 
 #[inline]
-pub fn default_berachain_payload_for_platform<Client, Pool, F>(
+pub fn default_berachain_payload_for_platform<Pool, F>(
     evm_config: BerachainEvmConfig,
     chain_spec: &Arc<types::ChainSpec<BerachainPlatform>>,
     state_provider: &dyn StateProvider,
@@ -156,7 +154,6 @@ pub fn default_berachain_payload_for_platform<Client, Pool, F>(
     best_txs: F,
 ) -> Result<BuildOutcome<BerachainBuiltPayload>, PayloadBuilderError>
 where
-    Client: StateProviderFactory + ChainSpecProvider<ChainSpec = BerachainChainSpec>,
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = BerachainTxEnvelope>>,
     F: FnOnce(BestTransactionsAttributes) -> BestTransactionsFor<Pool>,
 {
@@ -370,7 +367,7 @@ where
         return Ok(BuildOutcome::Aborted { fees: total_fees, cached_reads })
     }
 
-    let BlockBuilderOutcome { execution_result, block, .. } = builder.finish(&state_provider)?;
+    let BlockBuilderOutcome { execution_result, block, .. } = builder.finish(state_provider)?;
 
     let requests = chain_spec
         .is_prague_active_at_timestamp(attributes.timestamp)

@@ -481,22 +481,20 @@ where
     /// Returns None if the transaction does not exist or is pending
     /// Note: The tx receipt is not available for pending transactions.
     /// TOOD: Override this to use Berachain Flashblocks
-    fn transaction_receipt(
+    async fn transaction_receipt(
         &self,
         hash: B256,
-    ) -> impl Future<Output = Result<Option<RpcReceipt<Self::NetworkTypes>>, Self::Error>> + Send
+    ) -> Result<Option<RpcReceipt<Self::NetworkTypes>>, Self::Error>
     where
         Self: LoadReceipt + 'static,
     {
-        async move {
-            match self.load_transaction_and_receipt(hash).await? {
-                Some((tx, meta, receipt)) => {
-                    self.build_transaction_receipt(tx, meta, receipt).await.map(Some)
-                }
-                // TODO: In the none case, we should attempt to fetch from flashblock state
-                // The flashblock state needs to be ingested from WS stream
-                None => Ok(None),
+        match self.load_transaction_and_receipt(hash).await? {
+            Some((tx, meta, receipt)) => {
+                self.build_transaction_receipt(tx, meta, receipt).await.map(Some)
             }
+            // TODO: In the none case, we should attempt to fetch from flashblock state
+            // The flashblock state needs to be ingested from WS stream
+            None => Ok(None),
         }
     }
 }
