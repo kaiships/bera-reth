@@ -21,7 +21,7 @@ use clap::Parser;
 use rblib::{
     pool::{AppendOrders, HostNodeInstaller, OrderPool},
     prelude::{Loop, Pipeline},
-    steps::OrderByPriorityFee,
+    steps::{OrderByPriorityFee, RemoveRevertedTransactions},
 };
 use reth::CliRunner;
 use reth_cli_commands::node::NoArgs;
@@ -30,14 +30,16 @@ use reth_node_builder::{Node, NodeHandle};
 use std::sync::Arc;
 use tracing::info;
 
-/// Basic block builder
-///
-/// Block building strategy that builds blocks using the classic approach by
-/// prepending sequencer transactions, then ordering the rest of the
-/// transactions by tip.
+/// Example Berachain Sequencer with Revert Protection
 fn build_sequencer_pipeline(pool: &OrderPool<BerachainPlatform>) -> Pipeline<BerachainPlatform> {
-    let pipeline = Pipeline::<BerachainPlatform>::named("classic")
-        .with_pipeline(Loop, (AppendOrders::from_pool(pool), OrderByPriorityFee::default()));
+    let pipeline = Pipeline::<BerachainPlatform>::named("classic").with_pipeline(
+        Loop,
+        (
+            AppendOrders::from_pool(pool),
+            OrderByPriorityFee::default(),
+            RemoveRevertedTransactions::default(),
+        ),
+    );
 
     pool.attach_pipeline(&pipeline);
     pipeline
