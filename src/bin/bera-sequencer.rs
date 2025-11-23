@@ -12,7 +12,7 @@ use bera_reth::{
     consensus::BerachainBeaconConsensus,
     evm::BerachainEvmFactory,
     node::{BerachainNode, evm::config::BerachainEvmConfig},
-    rblib_integration::BerachainPlatform,
+    platform::BerachainPlatform,
     version::init_bera_version,
 };
 use clap::Parser;

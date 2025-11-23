@@ -1,4 +1,3 @@
-use super::limits::BerachainLimits;
 use crate::{
     chainspec::BerachainChainSpec,
     engine::{
@@ -12,7 +11,6 @@ use crate::{
     },
     pool::transaction::BerachainPooledTransaction,
     primitives::BerachainHeader,
-    rblib_integration::platform::pool::FixedTransactions,
     transaction::BerachainTxEnvelope,
 };
 use alloy_consensus::Transaction;
@@ -53,6 +51,24 @@ use reth_transaction_pool::{
 };
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
+
+use rblib::prelude::pool::FixedTransactions;
+use std::time::Duration;
+
+/// Default limits for Berachain payload building
+#[derive(Debug, Clone, Default)]
+pub struct BerachainLimits;
+
+impl PlatformLimits<BerachainPlatform> for BerachainLimits {
+    fn create(&self, _block: &BlockContext<BerachainPlatform>) -> Limits {
+        Limits {
+            gas_limit: 30_000_000, // TODO: calculate correctly
+            blob_params: None,     // TODO: Get blob configuration from chainspec
+            max_transactions: Some(1_000),
+            deadline: Some(Duration::from_secs(2)), // bera block time
+        }
+    }
+}
 
 /// Platform implementation for Berachain
 ///

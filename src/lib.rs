@@ -9,9 +9,9 @@ pub mod evm;
 pub mod genesis;
 pub mod hardforks;
 pub mod node;
+pub mod platform;
 pub mod pool;
 pub mod primitives;
-pub mod rblib_integration;
 pub mod rpc;
 #[cfg(test)]
 pub mod test_utils;
