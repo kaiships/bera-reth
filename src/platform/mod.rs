@@ -52,6 +52,7 @@ use reth_transaction_pool::{
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
+use crate::evm::BerachainEvmFactory;
 use rblib::prelude::pool::FixedTransactions;
 use std::time::Duration;
 
@@ -88,8 +89,6 @@ impl Platform for BerachainPlatform {
     where
         P: traits::PlatformExecBounds<Self>,
     {
-        // Create EVM config with the Berachain chain spec
-        use crate::evm::BerachainEvmFactory;
         BerachainEvmConfig::new_with_evm_factory(chainspec, BerachainEvmFactory::default())
     }
 
