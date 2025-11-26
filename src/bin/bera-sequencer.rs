@@ -71,7 +71,7 @@ fn main() {
             async move |builder, _| {
                 info!(target: "reth::cli", "Launching Berachain Sequencer node");
                 let pool = OrderPool::<BerachainPlatform>::default();
-                let pipeline = build_sequencer_pipeline(&pool);
+                let pipeline = berachain_builder_pipeline(&pool);
                 let berachain_node = BerachainNode::default();
 
                 // Helps compiler
