@@ -189,6 +189,7 @@ where
     type Error = EVMError<DB::Error>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PRECOMPILE;
     type Inspector = I;
 
@@ -279,6 +280,7 @@ impl EvmFactory for BerachainEvmFactory {
     type Error<DBError: core::error::Error + Send + Sync + 'static> = EVMError<DBError>;
     type HaltReason = HaltReason;
     type Spec = SpecId;
+    type BlockEnv = BlockEnv;
     type Precompiles = PrecompilesMap;
 
     fn create_evm<DB: Database>(&self, db: DB, input: EvmEnv) -> Self::Evm<DB, NoOpInspector> {
@@ -404,13 +406,13 @@ mod tests {
         if let Ok(result) = &result_with_tracer &&
             let ExecutionResult::Success { gas_used, .. } = &result.result
         {
-            assert_eq!(*gas_used, 0);
+            assert_eq!(gas_used, &0);
         }
 
         if let Ok(result) = &result_without_tracer &&
             let ExecutionResult::Success { gas_used, .. } = &result.result
         {
-            assert_eq!(*gas_used, 0);
+            assert_eq!(gas_used, &0);
         }
 
         // Verify tracer captured system call details

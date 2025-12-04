@@ -21,7 +21,7 @@ use reth_payload_primitives::{
     PayloadTypes, validate_execution_requests, validate_version_specific_fields,
 };
 use reth_payload_validator::{cancun, prague, shanghai};
-use reth_primitives_traits::{Block, RecoveredBlock, SealedBlock};
+use reth_primitives_traits::{Block, SealedBlock};
 use std::{marker::PhantomData, sync::Arc};
 
 #[derive(Debug, Clone)]
@@ -116,10 +116,10 @@ impl BerachainEngineValidator {
 impl PayloadValidator<BerachainEngineTypes> for BerachainEngineValidator {
     type Block = BerachainBlock;
 
-    fn ensure_well_formed_payload(
+    fn convert_payload_to_block(
         &self,
         payload: BerachainExecutionData,
-    ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
+    ) -> Result<SealedBlock<Self::Block>, NewPayloadError> {
         let BerachainExecutionData { payload, sidecar } = payload;
         let expected_hash = payload.block_hash();
 
@@ -137,7 +137,7 @@ impl PayloadValidator<BerachainEngineTypes> for BerachainEngineValidator {
         // Apply standard + Berachain hardfork validations
         self.validate_hardfork_fields(&sealed_block, &sidecar)?;
 
-        sealed_block.try_recover().map_err(|e| NewPayloadError::Other(e.into()))
+        Ok(sealed_block)
     }
 }
 
