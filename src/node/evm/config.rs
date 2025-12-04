@@ -35,7 +35,7 @@ use reth_primitives_traits::{
 use reth_rpc_eth_api::helpers::pending_block::BuildPendingEnv;
 use std::{borrow::Cow, convert::Infallible, fmt::Debug, sync::Arc};
 
-const BERACHAIN_BLOCK_TIME_SECONDS: u64 = 2;
+pub const BERACHAIN_BLOCK_TIME_SECONDS: u64 = 2;
 
 #[derive(Debug, Clone)]
 pub struct BerachainEvmConfig {

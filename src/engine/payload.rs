@@ -1,5 +1,6 @@
 use crate::{
     chainspec::BerachainChainSpec,
+    node::evm::config::BERACHAIN_BLOCK_TIME_SECONDS,
     primitives::{BerachainBlock, BerachainHeader, BerachainPrimitives, header::BlsPublicKey},
 };
 use alloy_eips::{
@@ -141,7 +142,7 @@ impl PayloadAttributesBuilder<BerachainPayloadAttributes, BerachainHeader>
     for LocalPayloadAttributesBuilder<BerachainChainSpec>
 {
     fn build(&self, parent: &SealedHeader<BerachainHeader>) -> BerachainPayloadAttributes {
-        let timestamp = parent.timestamp() + 12;
+        let timestamp = parent.timestamp() + BERACHAIN_BLOCK_TIME_SECONDS;
         BerachainPayloadAttributes {
             inner: EthPayloadAttributes {
                 timestamp,
