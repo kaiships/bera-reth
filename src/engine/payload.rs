@@ -1,6 +1,7 @@
 use crate::{
     chainspec::BerachainChainSpec,
-    primitives::{BerachainBlock, BerachainPrimitives, header::BlsPublicKey},
+    node::evm::config::BERACHAIN_BLOCK_TIME_SECONDS,
+    primitives::{BerachainBlock, BerachainHeader, BerachainPrimitives, header::BlsPublicKey},
 };
 use alloy_eips::{
     eip4895::{Withdrawal, Withdrawals},
@@ -22,7 +23,7 @@ use reth_engine_local::LocalPayloadAttributesBuilder;
 use reth_ethereum_engine_primitives::{BlobSidecars, BuiltPayloadConversionError};
 use reth_node_ethereum::engine::EthPayloadAttributes;
 use reth_payload_primitives::BuiltPayload;
-use reth_primitives_traits::{NodePrimitives, SealedBlock};
+use reth_primitives_traits::{AlloyBlockHeader, NodePrimitives, SealedBlock, SealedHeader};
 use std::{convert::Infallible, sync::Arc};
 
 /// Berachain-specific payload attributes
@@ -137,10 +138,11 @@ impl BerachainPayloadBuilderAttributes {
 }
 
 /// Implementation for LocalPayloadAttributesBuilder to build BerachainPayloadAttributes
-impl PayloadAttributesBuilder<BerachainPayloadAttributes>
+impl PayloadAttributesBuilder<BerachainPayloadAttributes, BerachainHeader>
     for LocalPayloadAttributesBuilder<BerachainChainSpec>
 {
-    fn build(&self, timestamp: u64) -> BerachainPayloadAttributes {
+    fn build(&self, parent: &SealedHeader<BerachainHeader>) -> BerachainPayloadAttributes {
+        let timestamp = parent.timestamp() + BERACHAIN_BLOCK_TIME_SECONDS;
         BerachainPayloadAttributes {
             inner: EthPayloadAttributes {
                 timestamp,

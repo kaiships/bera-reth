@@ -18,6 +18,7 @@ use reth_evm::{
     block::{BlockExecutionError, BlockExecutorFactory},
     execute::{BlockAssembler, BlockAssemblerInput},
 };
+use revm_context_interface::Block as _;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -54,12 +55,12 @@ where
             execution_ctx: ctx,
             parent,
             mut transactions,
-            output: BlockExecutionResult { receipts, requests, gas_used },
+            output: BlockExecutionResult { receipts, requests, gas_used, .. },
             state_root,
             ..
         } = input;
 
-        let timestamp = evm_env.block_env.timestamp.saturating_to();
+        let timestamp = evm_env.block_env.timestamp().saturating_to();
 
         // Validate proposer pubkey presence for Prague1
         validate_proposer_pubkey_prague1(&*self.chain_spec, timestamp, ctx.prev_proposer_pubkey)?;
@@ -69,11 +70,11 @@ where
             let prev_proposer_pubkey = ctx.prev_proposer_pubkey.unwrap();
 
             // Synthesize POL transaction and prepend to transactions list
-            let base_fee = evm_env.block_env.basefee;
+            let base_fee = evm_env.block_env.basefee();
             let pol_transaction = create_pol_transaction(
                 self.chain_spec.clone(),
                 prev_proposer_pubkey,
-                evm_env.block_env.number,
+                evm_env.block_env.number(),
                 base_fee,
             )?;
 
@@ -134,19 +135,19 @@ where
         let header = BerachainHeader {
             parent_hash: ctx.parent_hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: evm_env.block_env.beneficiary,
+            beneficiary: evm_env.block_env.beneficiary(),
             state_root,
             transactions_root,
             receipts_root,
             withdrawals_root,
             logs_bloom,
             timestamp,
-            mix_hash: evm_env.block_env.prevrandao.unwrap_or_default(),
+            mix_hash: evm_env.block_env.prevrandao().unwrap_or_default(),
             nonce: BEACON_NONCE.into(),
-            base_fee_per_gas: Some(evm_env.block_env.basefee),
-            number: evm_env.block_env.number.saturating_to(),
-            gas_limit: evm_env.block_env.gas_limit,
-            difficulty: evm_env.block_env.difficulty,
+            base_fee_per_gas: Some(evm_env.block_env.basefee()),
+            number: evm_env.block_env.number().saturating_to(),
+            gas_limit: evm_env.block_env.gas_limit(),
+            difficulty: evm_env.block_env.difficulty(),
             gas_used: *gas_used,
             extra_data: self.extra_data.clone(),
             parent_beacon_block_root: ctx.parent_beacon_block_root,

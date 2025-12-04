@@ -28,7 +28,7 @@ use reth::{
     },
 };
 use reth_chainspec::{ChainSpecProvider, EthChainSpec, Hardforks};
-use reth_evm::{ConfigureEvm, EvmFactory, EvmFactoryFor, SpecFor, TxEnvFor};
+use reth_evm::{ConfigureEvm, EvmFactory, EvmFactoryFor};
 use reth_node_api::{FullNodeTypes, NodeAddOns, NodeTypes};
 use reth_node_builder::rpc::{
     BasicEngineValidatorBuilder, EngineApiBuilder, EngineValidatorAddOn, EngineValidatorBuilder,
@@ -59,10 +59,9 @@ where
         >,
     BerachainEthRpcConverterFor<N>: RpcConvert<
             Primitives = PrimitivesTy<N::Types>,
-            TxEnv = TxEnvFor<N::Evm>,
+            Evm = N::Evm,
             Error = EthApiError,
             Network = BerachainNetwork,
-            Spec = SpecFor<N::Evm>,
         >,
     EthApiError: FromEvmError<N::Evm>,
 {
