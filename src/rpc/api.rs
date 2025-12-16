@@ -13,26 +13,20 @@ use alloy_rpc_types_eth::{Transaction as RpcTransaction, TransactionRequest};
 use core::fmt;
 use derive_more::Deref;
 use reth::{
-    providers::{ProviderHeader, ProviderTx},
-    rpc::compat::{RpcConvert, RpcTypes},
+    providers::ProviderHeader,
+    rpc::compat::RpcConvert,
     tasks::{
         TaskSpawner,
         pool::{BlockingTaskGuard, BlockingTaskPool},
     },
     transaction_pool::{PoolTransaction, TransactionPool},
 };
-use reth_evm::{SpecFor, TxEnvFor};
-use reth_rpc::eth::DevSigner;
-use reth_rpc_convert::SignableTxRequest;
 use reth_rpc_eth_api::{
     EthApiTypes, RpcNodeCore, RpcNodeCoreExt,
     helpers::{
-        AddDevSigners, Call, EthApiSpec, EthBlocks, EthCall, EthFees, EthState, EthTransactions,
-        LoadBlock, LoadFee, LoadPendingBlock, LoadReceipt, LoadState, LoadTransaction,
-        SpawnBlocking, Trace,
-        estimate::EstimateCall,
-        pending_block::PendingEnvBuilder,
-        spec::{SignersForApi, SignersForRpc},
+        Call, EthApiSpec, EthBlocks, EthCall, EthFees, EthState, EthTransactions, LoadBlock,
+        LoadFee, LoadPendingBlock, LoadReceipt, LoadState, LoadTransaction, SpawnBlocking, Trace,
+        estimate::EstimateCall, pending_block::PendingEnvBuilder, spec::SignersForRpc,
     },
 };
 use reth_rpc_eth_types::{
@@ -430,19 +424,6 @@ where
     }
 }
 
-impl<N, Rpc> AddDevSigners for BerachainApi<N, Rpc>
-where
-    N: RpcNodeCore,
-    EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<
-        Network: RpcTypes<TransactionRequest: SignableTxRequest<ProviderTx<N::Provider>>>,
-    >,
-{
-    fn with_dev_accounts(&self) {
-        *self.inner.signers().write() = DevSigner::random_signers(20)
-    }
-}
-
 impl<N, Rpc> EthTransactions for BerachainApi<N, Rpc>
 where
     N: RpcNodeCore,
@@ -498,15 +479,8 @@ where
     N: RpcNodeCore,
     Rpc: RpcConvert<Primitives = N::Primitives>,
 {
-    type Transaction = ProviderTx<N::Provider>;
-    type Rpc = Rpc::Network;
-
     fn starting_block(&self) -> U256 {
         self.inner.starting_block()
-    }
-
-    fn signers(&self) -> &SignersForApi<Self> {
-        self.inner.signers()
     }
 }
 
@@ -530,12 +504,7 @@ impl<N, Rpc> EthCall for BerachainApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<
-            Primitives = N::Primitives,
-            Error = EthApiError,
-            TxEnv = TxEnvFor<N::Evm>,
-            Spec = SpecFor<N::Evm>,
-        >,
+    Rpc: RpcConvert<Primitives = N::Primitives, Evm = N::Evm, Error = EthApiError>,
 {
 }
 
@@ -543,12 +512,7 @@ impl<N, Rpc> Call for BerachainApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<
-            Primitives = N::Primitives,
-            Error = EthApiError,
-            TxEnv = TxEnvFor<N::Evm>,
-            Spec = SpecFor<N::Evm>,
-        >,
+    Rpc: RpcConvert<Primitives = N::Primitives, Evm = N::Evm, Error = EthApiError>,
 {
     #[inline]
     fn call_gas_limit(&self) -> u64 {
@@ -559,18 +523,18 @@ where
     fn max_simulate_blocks(&self) -> u64 {
         self.inner.max_simulate_blocks()
     }
+
+    #[inline]
+    fn evm_memory_limit(&self) -> u64 {
+        self.inner.evm_memory_limit()
+    }
 }
 
 impl<N, Rpc> EstimateCall for BerachainApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<
-            Primitives = N::Primitives,
-            Error = EthApiError,
-            TxEnv = TxEnvFor<N::Evm>,
-            Spec = SpecFor<N::Evm>,
-        >,
+    Rpc: RpcConvert<Primitives = N::Primitives, Evm = N::Evm, Error = EthApiError>,
 {
 }
 
@@ -578,7 +542,7 @@ impl<N, Rpc> EthFees for BerachainApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Spec = SpecFor<N::Evm>>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Evm = N::Evm, Error = EthApiError>,
 {
 }
 
@@ -613,7 +577,7 @@ impl<N, Rpc> LoadFee for BerachainApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Spec = SpecFor<N::Evm>>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Evm = N::Evm, Error = EthApiError>,
 {
     #[inline]
     fn gas_oracle(&self) -> &GasPriceOracle<Self::Provider> {
