@@ -55,6 +55,8 @@ pub struct BerachainBlockExecutor<'a, Evm> {
     receipts: Vec<<BerachainReceiptBuilder as ReceiptBuilder>::Receipt>,
     /// Total gas used by transactions in this block.
     gas_used: u64,
+    /// Total blob gas used by blob transactions in this block.
+    blob_gas_used: u64,
 }
 
 impl<'a, Evm> BerachainBlockExecutor<'a, Evm> {
@@ -70,6 +72,7 @@ impl<'a, Evm> BerachainBlockExecutor<'a, Evm> {
             ctx,
             receipts: Vec::new(),
             gas_used: 0,
+            blob_gas_used: 0,
             system_caller: SystemCaller::new(spec.clone()),
             receipt_builder,
         }
@@ -235,6 +238,7 @@ where
 
         // append gas used
         self.gas_used += gas_used;
+        self.blob_gas_used += tx.tx().blob_gas_used().unwrap_or(0);
 
         // Push transaction changeset and calculate header bloom filter for receipt.
         self.receipts.push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
@@ -325,7 +329,7 @@ where
                 receipts: self.receipts,
                 requests,
                 gas_used: self.gas_used,
-                blob_gas_used: 0,
+                blob_gas_used: self.blob_gas_used,
             },
         ))
     }
