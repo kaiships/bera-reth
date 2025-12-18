@@ -1,4 +1,4 @@
-# Copied from reth v1.8.1
+# Copied from reth v1.9.3
 # Ignored Tests Configuration
 #
 # This file contains tests that should be ignored for various reasons (flaky, known issues, etc).
@@ -22,6 +22,7 @@ engine-cancun:
   - Transaction Re-Org, New Payload on Revert Back (Cancun) (bera-reth)
   - Transaction Re-Org, Re-Org to Different Block (Cancun) (bera-reth)
   - Transaction Re-Org, Re-Org Out (Cancun) (bera-reth)
+  - Invalid Missing Ancestor ReOrg, StateRoot, EmptyTxs=False, Invalid P9 (Cancun) (bera-reth)
   - Multiple New Payloads Extending Canonical Chain, Wait for Canonical Payload (Cancun) (bera-reth)
 engine-api:
   - Transaction Re-Org, Re-Org Out (Paris) (bera-reth)
@@ -31,6 +32,7 @@ engine-api:
   - Invalid Missing Ancestor Syncing ReOrg, Transaction Nonce, EmptyTxs=False, CanonicalReOrg=False, Invalid P9 (Paris) (bera-reth)
   - Invalid Missing Ancestor Syncing ReOrg, Transaction Signature, EmptyTxs=False, CanonicalReOrg=True, Invalid P9 (Paris) (bera-reth)
   - Invalid Missing Ancestor Syncing ReOrg, Transaction Signature, EmptyTxs=False, CanonicalReOrg=False, Invalid P9 (Paris) (bera-reth)
+  - Invalid Missing Ancestor ReOrg, StateRoot, EmptyTxs=True, Invalid P10 (Paris) (bera-reth)
   - Multiple New Payloads Extending Canonical Chain, Wait for Canonical Payload (Paris) (bera-reth)
   - Multiple New Payloads Extending Canonical Chain, Set Head to First Payload Received (Paris) (bera-reth)
 
