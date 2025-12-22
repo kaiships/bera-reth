@@ -877,8 +877,6 @@ mod rpc_integration_tests {
     use alloy_provider::Provider;
     use bera_reth::{
         engine::validator::BerachainEngineValidatorBuilder,
-        evm::BerachainEvmFactory,
-        node::evm::config::BerachainEvmConfig,
         primitives::BerachainPrimitives,
         rpc::{BerachainAddOns, BerachainEthApiBuilder},
     };
@@ -961,14 +959,26 @@ mod rpc_integration_tests {
         let (tasks, chain_spec) = setup_test_boilerplate().await?;
         let executor = tasks.executor();
 
+        // Create channels that connect the FlashBlockService to the RPC layer's
+        // FlashblocksListeners.
+        // - pending_tx: service writes pending blocks here, RPC reads from pending_rx
+        // - in_progress_tx: we manually forward service state to RPC (see below)
         let (pending_tx, pending_rx) = watch::channel(None);
-        let (sequence_tx, _) =
-            broadcast::channel::<FlashBlockCompleteSequence<BerachainFlashblockPayload>>(16);
         let (in_progress_tx, in_progress_rx) = watch::channel(None);
-        let (received_tx, _) = broadcast::channel::<Arc<BerachainFlashblockPayload>>(128);
+
+        // These channels are required by FlashblocksListeners but not used in this test.
+        // The service has its own internal broadcasters for these.
+        let (unused_sequence_tx, _) =
+            broadcast::channel::<FlashBlockCompleteSequence<BerachainFlashblockPayload>>(1);
+        let (unused_received_tx, _) = broadcast::channel::<Arc<BerachainFlashblockPayload>>(1);
 
         let listeners: FlashblocksListeners<BerachainPrimitives, BerachainFlashblockPayload> =
-            FlashblocksListeners::new(pending_rx, sequence_tx, in_progress_rx, received_tx);
+            FlashblocksListeners::new(
+                pending_rx,
+                unused_sequence_tx,
+                in_progress_rx,
+                unused_received_tx,
+            );
 
         let eth_api_builder =
             BerachainEthApiBuilder::default().with_flashblocks_listeners(listeners);
@@ -987,17 +997,16 @@ mod rpc_integration_tests {
             .launch()
             .await?;
 
-        let evm_config = BerachainEvmConfig::new_with_evm_factory(
-            chain_spec.clone(),
-            BerachainEvmFactory::default(),
-        );
-        let provider = node.provider().clone();
-
         let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
         let stream = MockFlashblockStream { rx: fb_rx };
 
-        let service =
-            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+        let service = FlashBlockService::new(
+            stream,
+            node.evm_config.clone(),
+            node.provider().clone(),
+            executor.clone(),
+            false,
+        );
 
         let mut service_in_progress_rx = service.subscribe_in_progress();
 
