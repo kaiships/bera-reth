@@ -280,17 +280,21 @@ mod mock_stream_tests {
 mod service_integration_tests {
     use super::*;
     use crate::e2e::setup_test_boilerplate;
-    use alloy_consensus::BlockHeader;
+    use alloy_consensus::{
+        BlockHeader,
+        transaction::{SignerRecoverable, TxHashRef},
+    };
     use alloy_primitives::{Address, B256, Bloom, Bytes, U256};
     use bera_reth::{
         evm::BerachainEvmFactory, node::evm::config::BerachainEvmConfig,
         primitives::BerachainPrimitives,
     };
     use reth::{providers::BlockReaderIdExt, rpc::types::engine::PayloadId};
+    use reth_chainspec::EthChainSpec;
     use reth_node_builder::{NodeBuilder, NodeHandle};
     use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
     use reth_optimism_flashblocks::{
-        FlashBlockCompleteSequence, FlashBlockService, PendingFlashBlock,
+        FlashBlockCompleteSequence, FlashBlockService, FlashblockPayload, PendingFlashBlock,
     };
     use std::{pin::Pin, task::Poll, time::Duration};
     use tokio::sync::watch;
@@ -575,6 +579,289 @@ mod service_integration_tests {
         let result = tokio::time::timeout(Duration::from_millis(200), pending_rx.changed()).await;
 
         assert!(result.is_err(), "Should not build pending block with wrong parent hash");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_flashblock_service_with_real_transactions() -> eyre::Result<()> {
+        use crate::e2e::test_signer;
+        use alloy_eips::eip2718::Encodable2718;
+        use reth_e2e_test_utils::transaction::TransactionTestContext;
+
+        let (tasks, chain_spec) = setup_test_boilerplate().await?;
+        let executor = tasks.executor();
+
+        let node_config = NodeConfig::new(chain_spec.clone())
+            .with_unused_ports()
+            .with_rpc(RpcServerArgs::default().with_unused_ports().with_http());
+
+        let NodeHandle { node, node_exit_future: _ } = NodeBuilder::new(node_config)
+            .testing_node(executor.clone())
+            .node(BerachainNode::default())
+            .launch()
+            .await?;
+
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
+
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service =
+            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+
+        let (pending_tx, mut pending_rx) = watch::channel(None);
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let latest_hash = latest.hash();
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
+
+        let signer = test_signer()?;
+        let signer_address = signer.address();
+        let chain_id = chain_spec.chain_id();
+        let signed_tx = TransactionTestContext::transfer_tx(chain_id, signer).await;
+        let tx_bytes = Bytes::from(signed_tx.encoded_2718());
+        let tx_hash = *signed_tx.tx_hash();
+
+        let payload_id = PayloadId::new([1u8; 8]);
+        let mut fb0 = create_test_flashblock_for_parent(
+            0,
+            next_block,
+            payload_id,
+            latest_hash,
+            next_timestamp,
+        );
+        fb0.diff.transactions = vec![tx_bytes.clone()];
+        fb0.diff.gas_used = 21000;
+
+        fb_tx.send(fb0).await?;
+
+        pending_rx.changed().await?;
+        let pending_block: Option<PendingFlashBlock<BerachainPrimitives>> =
+            pending_rx.borrow().clone();
+
+        let pending = pending_block.expect("should have pending block");
+        assert_eq!(pending.parent_hash(), latest_hash);
+
+        let block = pending.block();
+        let block_txs = &block.body().transactions;
+
+        assert!(
+            block_txs.len() >= 1,
+            "Block should contain at least 1 transaction, got {}",
+            block_txs.len()
+        );
+
+        let user_tx = block_txs
+            .iter()
+            .find(|tx| *tx.hash() == tx_hash)
+            .expect("User transaction should be in the block");
+
+        let recovered_sender = user_tx.recover_signer().expect("should recover signer");
+        assert_eq!(recovered_sender, signer_address, "Recovered sender should match signer");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_flashblock_pending_block_contains_correct_header_fields() -> eyre::Result<()> {
+        let (tasks, chain_spec) = setup_test_boilerplate().await?;
+        let executor = tasks.executor();
+
+        let node_config = NodeConfig::new(chain_spec.clone())
+            .with_unused_ports()
+            .with_rpc(RpcServerArgs::default().with_unused_ports().with_http());
+
+        let NodeHandle { node, node_exit_future: _ } = NodeBuilder::new(node_config)
+            .testing_node(executor.clone())
+            .node(BerachainNode::default())
+            .launch()
+            .await?;
+
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
+
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service =
+            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+
+        let (pending_tx, mut pending_rx) = watch::channel(None);
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let latest_hash = latest.hash();
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
+
+        let payload_id = PayloadId::new([1u8; 8]);
+        let fb0 = create_test_flashblock_for_parent(
+            0,
+            next_block,
+            payload_id,
+            latest_hash,
+            next_timestamp,
+        );
+
+        let expected_prev_proposer = fb0.base.as_ref().unwrap().prev_proposer_pubkey;
+
+        fb_tx.send(fb0).await?;
+
+        pending_rx.changed().await?;
+        let pending_block: Option<PendingFlashBlock<BerachainPrimitives>> =
+            pending_rx.borrow().clone();
+
+        let pending = pending_block.expect("should have pending block");
+        let block = pending.block();
+        let header = block.header();
+
+        assert_eq!(header.number, next_block, "Block number mismatch");
+        assert_eq!(header.timestamp, next_timestamp, "Timestamp mismatch");
+        assert_eq!(header.parent_hash, latest_hash, "Parent hash mismatch");
+        assert_eq!(header.gas_limit, 30_000_000, "Gas limit mismatch");
+        assert_eq!(
+            header.prev_proposer_pubkey, expected_prev_proposer,
+            "prev_proposer_pubkey should be preserved"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_flashblock_multiple_transactions_across_flashblocks() -> eyre::Result<()> {
+        use crate::e2e::test_signer;
+        use alloy_eips::eip2718::Encodable2718;
+        use alloy_signer_local::PrivateKeySigner;
+        use reth_e2e_test_utils::transaction::TransactionTestContext;
+
+        let (tasks, chain_spec) = setup_test_boilerplate().await?;
+        let executor = tasks.executor();
+
+        let node_config = NodeConfig::new(chain_spec.clone())
+            .with_unused_ports()
+            .with_rpc(RpcServerArgs::default().with_unused_ports().with_http());
+
+        let NodeHandle { node, node_exit_future: _ } = NodeBuilder::new(node_config)
+            .testing_node(executor.clone())
+            .node(BerachainNode::default())
+            .launch()
+            .await?;
+
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
+
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service =
+            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+
+        let mut sequence_rx = service.subscribe_block_sequence();
+
+        let (pending_tx, _pending_rx) = watch::channel(None);
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let latest_hash = latest.hash();
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
+
+        let signer1 = test_signer()?;
+        let signer1_address = signer1.address();
+        let signer2 = PrivateKeySigner::random();
+        let signer2_address = signer2.address();
+
+        let chain_id = chain_spec.chain_id();
+        let tx1 = TransactionTestContext::transfer_tx(chain_id, signer1).await;
+        let tx1_bytes = Bytes::from(tx1.encoded_2718());
+        let tx1_hash = *tx1.tx_hash();
+
+        let tx2 = TransactionTestContext::transfer_tx(chain_id, signer2).await;
+        let tx2_bytes = Bytes::from(tx2.encoded_2718());
+        let tx2_hash = *tx2.tx_hash();
+
+        let payload_id = PayloadId::new([1u8; 8]);
+
+        let mut fb0 = create_test_flashblock_for_parent(
+            0,
+            next_block,
+            payload_id,
+            latest_hash,
+            next_timestamp,
+        );
+        fb0.diff.transactions = vec![tx1_bytes];
+        fb0.diff.gas_used = 21000;
+
+        let mut fb1 = create_test_flashblock_for_parent(
+            1,
+            next_block,
+            payload_id,
+            latest_hash,
+            next_timestamp,
+        );
+        fb1.diff.transactions = vec![tx2_bytes];
+        fb1.diff.gas_used = 42000;
+
+        fb_tx.send(fb0).await?;
+        fb_tx.send(fb1).await?;
+
+        let payload_id2 = PayloadId::new([2u8; 8]);
+        let fb_next = create_test_flashblock_for_parent(
+            0,
+            next_block + 1,
+            payload_id2,
+            B256::random(),
+            next_timestamp + 2,
+        );
+        fb_tx.send(fb_next).await?;
+
+        let sequence: FlashBlockCompleteSequence<BerachainFlashblockPayload> =
+            tokio::time::timeout(Duration::from_millis(500), sequence_rx.recv()).await??;
+
+        assert_eq!(sequence.count(), 2);
+        assert_eq!(sequence.block_number(), next_block);
+
+        let all_txs = sequence.all_transactions();
+        assert_eq!(all_txs.len(), 2, "Should have 2 transactions total");
+
+        let recovered_txs: Vec<_> = sequence
+            .iter()
+            .flat_map(|fb| fb.recover_transactions())
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert_eq!(recovered_txs.len(), 2);
+        assert_eq!(*recovered_txs[0].value().tx_hash(), tx1_hash);
+        assert_eq!(*recovered_txs[1].value().tx_hash(), tx2_hash);
+        assert_eq!(recovered_txs[0].value().signer(), signer1_address);
+        assert_eq!(recovered_txs[1].value().signer(), signer2_address);
 
         Ok(())
     }
