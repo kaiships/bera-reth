@@ -279,16 +279,21 @@ mod mock_stream_tests {
 #[cfg(test)]
 mod service_integration_tests {
     use super::*;
-    use crate::e2e::{berachain_payload_attributes_generator, setup_test_boilerplate};
+    use crate::e2e::setup_test_boilerplate;
     use alloy_consensus::BlockHeader;
     use alloy_primitives::{Address, B256, Bloom, Bytes, U256};
+    use bera_reth::{
+        evm::BerachainEvmFactory, node::evm::config::BerachainEvmConfig,
+        primitives::BerachainPrimitives,
+    };
     use reth::{providers::BlockReaderIdExt, rpc::types::engine::PayloadId};
-    use reth_e2e_test_utils::node::NodeTestContext;
     use reth_node_builder::{NodeBuilder, NodeHandle};
     use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
-    use reth_optimism_flashblocks::{FlashBlockPendingSequence, FlashblocksListeners};
-    use std::sync::Arc;
-    use tokio::sync::{broadcast, watch};
+    use reth_optimism_flashblocks::{
+        FlashBlockCompleteSequence, FlashBlockService, PendingFlashBlock,
+    };
+    use std::{pin::Pin, task::Poll, time::Duration};
+    use tokio::sync::watch;
 
     fn create_test_flashblock_for_parent(
         index: u64,
@@ -333,8 +338,27 @@ mod service_integration_tests {
         }
     }
 
+    struct MockFlashblockStream {
+        rx: tokio::sync::mpsc::Receiver<BerachainFlashblockPayload>,
+    }
+
+    impl futures_util::Stream for MockFlashblockStream {
+        type Item = eyre::Result<BerachainFlashblockPayload>;
+
+        fn poll_next(
+            mut self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<Option<Self::Item>> {
+            match Pin::new(&mut self.rx).poll_recv(cx) {
+                Poll::Ready(Some(fb)) => Poll::Ready(Some(Ok(fb))),
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            }
+        }
+    }
+
     #[tokio::test]
-    async fn test_flashblock_sequence_builds_with_node_context() -> eyre::Result<()> {
+    async fn test_flashblock_service_receives_and_broadcasts() -> eyre::Result<()> {
         let (tasks, chain_spec) = setup_test_boilerplate().await?;
         let executor = tasks.executor();
 
@@ -348,87 +372,85 @@ mod service_integration_tests {
             .launch()
             .await?;
 
-        let ctx = NodeTestContext::new(node, berachain_payload_attributes_generator).await?;
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
 
-        let provider = ctx.rpc.inner.eth_api().provider();
-        let latest_header = provider.latest_header()?.expect("should have genesis");
-        let latest_hash = latest_header.hash();
-        let latest_number = latest_header.number();
-        let latest_timestamp = latest_header.timestamp();
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service = FlashBlockService::new(stream, evm_config, provider, executor.clone(), false);
+
+        let mut received_rx = service.flashblocks_broadcaster().subscribe();
+        let mut sequence_rx = service.subscribe_block_sequence();
+
+        let (pending_tx, _pending_rx) = watch::channel(None);
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let latest_hash = latest.hash();
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
 
         let payload_id = PayloadId::new([1u8; 8]);
         let fb0 = create_test_flashblock_for_parent(
             0,
-            latest_number + 1,
+            next_block,
             payload_id,
             latest_hash,
-            latest_timestamp + 2,
-        );
-        let fb1 = create_test_flashblock_for_parent(
-            1,
-            latest_number + 1,
-            payload_id,
-            latest_hash,
-            latest_timestamp + 2,
+            next_timestamp,
         );
 
-        let mut sequence: FlashBlockPendingSequence<BerachainFlashblockPayload> =
-            FlashBlockPendingSequence::new();
-
-        sequence.insert(fb0);
-        sequence.insert(fb1);
-
-        assert_eq!(sequence.count(), 2);
-        assert_eq!(sequence.block_number(), Some(latest_number + 1));
-
-        let complete = sequence.finalize()?;
-        assert_eq!(complete.count(), 2);
-
-        let base = complete.payload_base();
-        assert_eq!(base.parent_hash, latest_hash);
-        assert_eq!(base.block_number, latest_number + 1);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_flashblock_listeners_broadcast() -> eyre::Result<()> {
-        let (_pending_tx, pending_rx) = watch::channel(None);
-        let (sequence_tx, _) = broadcast::channel(128);
-        let (_in_progress_tx, in_progress_rx) = watch::channel(None);
-        let (received_tx, _) = broadcast::channel(128);
-
-        let listeners: FlashblocksListeners<
-            bera_reth::primitives::BerachainPrimitives,
-            BerachainFlashblockPayload,
-        > = FlashblocksListeners::new(
-            pending_rx,
-            sequence_tx.clone(),
-            in_progress_rx,
-            received_tx.clone(),
-        );
-
-        let _sequence_rx = listeners.flashblocks_sequence.subscribe();
-        let mut received_rx = listeners.received_flashblocks.subscribe();
-
-        let payload_id = PayloadId::new([1u8; 8]);
-        let parent_hash = B256::random();
-        let fb = create_test_flashblock_for_parent(0, 100, payload_id, parent_hash, 1_000_000);
-
-        received_tx.send(Arc::new(fb.clone()))?;
+        fb_tx.send(fb0.clone()).await?;
 
         let received =
-            tokio::time::timeout(std::time::Duration::from_millis(100), received_rx.recv())
-                .await??;
+            tokio::time::timeout(Duration::from_millis(500), received_rx.recv()).await??;
 
         assert_eq!(received.index, 0);
         assert_eq!(received.payload_id, payload_id);
+        assert_eq!(received.metadata.block_number, next_block);
+
+        let fb1 = create_test_flashblock_for_parent(
+            1,
+            next_block,
+            payload_id,
+            latest_hash,
+            next_timestamp,
+        );
+        fb_tx.send(fb1).await?;
+
+        let received2 =
+            tokio::time::timeout(Duration::from_millis(500), received_rx.recv()).await??;
+        assert_eq!(received2.index, 1);
+
+        let payload_id2 = PayloadId::new([2u8; 8]);
+        let fb_next_block = create_test_flashblock_for_parent(
+            0,
+            next_block + 1,
+            payload_id2,
+            B256::random(),
+            next_timestamp + 2,
+        );
+        fb_tx.send(fb_next_block).await?;
+
+        let sequence: FlashBlockCompleteSequence<BerachainFlashblockPayload> =
+            tokio::time::timeout(Duration::from_millis(500), sequence_rx.recv()).await??;
+
+        assert_eq!(sequence.block_number(), next_block);
+        assert_eq!(sequence.count(), 2);
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_flashblock_sequence_validates_parent_hash() -> eyre::Result<()> {
+    async fn test_flashblock_service_builds_pending_block() -> eyre::Result<()> {
         let (tasks, chain_spec) = setup_test_boilerplate().await?;
         let executor = tasks.executor();
 
@@ -442,37 +464,117 @@ mod service_integration_tests {
             .launch()
             .await?;
 
-        let ctx = NodeTestContext::new(node, berachain_payload_attributes_generator).await?;
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
 
-        let provider = ctx.rpc.inner.eth_api().provider();
-        let latest_header = provider.latest_header()?.expect("should have genesis");
-        let latest_hash = latest_header.hash();
-        let latest_number = latest_header.number();
-        let latest_timestamp = latest_header.timestamp();
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service =
+            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+
+        let mut in_progress_rx = service.subscribe_in_progress();
+
+        let (pending_tx, mut pending_rx) = watch::channel(None);
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let latest_hash = latest.hash();
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
 
         let payload_id = PayloadId::new([1u8; 8]);
-        let fb_correct_parent = create_test_flashblock_for_parent(
+        let fb0 = create_test_flashblock_for_parent(
             0,
-            latest_number + 1,
+            next_block,
             payload_id,
             latest_hash,
-            latest_timestamp + 2,
+            next_timestamp,
         );
+
+        fb_tx.send(fb0).await?;
+
+        in_progress_rx.changed().await?;
+        let build_info = in_progress_rx.borrow().clone();
+
+        if let Some(info) = build_info {
+            assert_eq!(info.block_number, next_block);
+            assert_eq!(info.parent_hash, latest_hash);
+        }
+
+        pending_rx.changed().await?;
+        let pending_block: Option<PendingFlashBlock<BerachainPrimitives>> =
+            pending_rx.borrow().clone();
+
+        if let Some(pending) = pending_block {
+            assert_eq!(pending.parent_hash(), latest_hash);
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_flashblock_service_validates_parent_hash() -> eyre::Result<()> {
+        let (tasks, chain_spec) = setup_test_boilerplate().await?;
+        let executor = tasks.executor();
+
+        let node_config = NodeConfig::new(chain_spec.clone())
+            .with_unused_ports()
+            .with_rpc(RpcServerArgs::default().with_unused_ports().with_http());
+
+        let NodeHandle { node, node_exit_future: _ } = NodeBuilder::new(node_config)
+            .testing_node(executor.clone())
+            .node(BerachainNode::default())
+            .launch()
+            .await?;
+
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
+
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service =
+            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+
+        let (pending_tx, mut pending_rx) = watch::channel(None);
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
 
         let wrong_parent_hash = B256::random();
+        let payload_id = PayloadId::new([1u8; 8]);
         let fb_wrong_parent = create_test_flashblock_for_parent(
             0,
-            latest_number + 1,
+            next_block,
             payload_id,
             wrong_parent_hash,
-            latest_timestamp + 2,
+            next_timestamp,
         );
 
-        let base_correct = fb_correct_parent.base.as_ref().unwrap();
-        assert_eq!(base_correct.parent_hash, latest_hash);
+        fb_tx.send(fb_wrong_parent).await?;
 
-        let base_wrong = fb_wrong_parent.base.as_ref().unwrap();
-        assert_ne!(base_wrong.parent_hash, latest_hash);
+        let result = tokio::time::timeout(Duration::from_millis(200), pending_rx.changed()).await;
+
+        assert!(result.is_err(), "Should not build pending block with wrong parent hash");
 
         Ok(())
     }

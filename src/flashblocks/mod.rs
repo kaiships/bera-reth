@@ -160,7 +160,16 @@ impl FlashblockPayload for BerachainFlashblockPayload {
     fn recover_transactions(
         &self,
     ) -> impl Iterator<Item = Result<WithEncoded<Recovered<Self::SignedTx>>, RecoveryError>> {
-        std::iter::from_fn(|| todo!("implement transaction recovery"))
+        use alloy_consensus::transaction::SignerRecoverable;
+        use alloy_eips::Decodable2718;
+
+        self.diff.transactions.clone().into_iter().map(|encoded| {
+            let tx = BerachainTxEnvelope::decode_2718(&mut encoded.as_ref())
+                .map_err(RecoveryError::from_source)?;
+            let signer = tx.recover_signer()?;
+            let recovered = Recovered::new_unchecked(tx, signer);
+            Ok(WithEncoded::new(encoded, recovered))
+        })
     }
 }
 
