@@ -866,3 +866,195 @@ mod service_integration_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod rpc_integration_tests {
+    use super::*;
+    use crate::e2e::{setup_test_boilerplate, test_signer};
+    use alloy_consensus::BlockHeader;
+    use alloy_eips::eip2718::Encodable2718;
+    use alloy_primitives::{Address, B256, Bloom, Bytes, U256};
+    use alloy_provider::Provider;
+    use bera_reth::{
+        engine::validator::BerachainEngineValidatorBuilder,
+        evm::BerachainEvmFactory,
+        node::evm::config::BerachainEvmConfig,
+        primitives::BerachainPrimitives,
+        rpc::{BerachainAddOns, BerachainEthApiBuilder},
+    };
+    use reth::{providers::BlockReaderIdExt, rpc::types::engine::PayloadId};
+    use reth_chainspec::EthChainSpec;
+    use reth_e2e_test_utils::transaction::TransactionTestContext;
+    use reth_node_builder::{Node, NodeBuilder, NodeHandle};
+    use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
+    use reth_optimism_flashblocks::{FlashBlockService, FlashblocksListeners};
+    use std::{pin::Pin, sync::Arc, task::Poll, time::Duration};
+    use tokio::sync::watch;
+
+    fn create_test_flashblock_for_parent(
+        index: u64,
+        block_number: u64,
+        payload_id: PayloadId,
+        parent_hash: B256,
+        timestamp: u64,
+    ) -> BerachainFlashblockPayload {
+        let base = if index == 0 {
+            Some(BerachainFlashblockPayloadBase {
+                parent_beacon_block_root: B256::random(),
+                parent_hash,
+                fee_recipient: Address::random(),
+                prev_randao: B256::random(),
+                block_number,
+                gas_limit: 30_000_000,
+                timestamp,
+                extra_data: Bytes::default(),
+                base_fee_per_gas: U256::from(1_000_000_000u64),
+                prev_proposer_pubkey: Some(BlsPublicKey::random()),
+            })
+        } else {
+            None
+        };
+
+        BerachainFlashblockPayload {
+            payload_id,
+            index,
+            base,
+            diff: BerachainFlashblockPayloadDiff {
+                state_root: B256::random(),
+                receipts_root: B256::random(),
+                logs_bloom: Bloom::default(),
+                gas_used: 21000,
+                block_hash: B256::random(),
+                transactions: vec![],
+                withdrawals: vec![],
+                withdrawals_root: B256::ZERO,
+                blob_gas_used: None,
+            },
+            metadata: BerachainFlashblockPayloadMetadata { block_number },
+        }
+    }
+
+    struct MockFlashblockStream {
+        rx: tokio::sync::mpsc::Receiver<BerachainFlashblockPayload>,
+    }
+
+    impl futures_util::Stream for MockFlashblockStream {
+        type Item = eyre::Result<BerachainFlashblockPayload>;
+
+        fn poll_next(
+            mut self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<Option<Self::Item>> {
+            match Pin::new(&mut self.rx).poll_recv(cx) {
+                Poll::Ready(Some(fb)) => Poll::Ready(Some(Ok(fb))),
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rpc_returns_flashblock_pending_receipt() -> eyre::Result<()> {
+        use reth_optimism_flashblocks::FlashBlockCompleteSequence;
+        use tokio::sync::broadcast;
+
+        let (tasks, chain_spec) = setup_test_boilerplate().await?;
+        let executor = tasks.executor();
+
+        let (pending_tx, pending_rx) = watch::channel(None);
+        let (sequence_tx, _) =
+            broadcast::channel::<FlashBlockCompleteSequence<BerachainFlashblockPayload>>(16);
+        let (in_progress_tx, in_progress_rx) = watch::channel(None);
+        let (received_tx, _) = broadcast::channel::<Arc<BerachainFlashblockPayload>>(128);
+
+        let listeners: FlashblocksListeners<BerachainPrimitives, BerachainFlashblockPayload> =
+            FlashblocksListeners::new(pending_rx, sequence_tx, in_progress_rx, received_tx);
+
+        let eth_api_builder =
+            BerachainEthApiBuilder::default().with_flashblocks_listeners(listeners);
+        let add_ons =
+            BerachainAddOns::<_, _, BerachainEngineValidatorBuilder>::new(eth_api_builder);
+
+        let node_config = NodeConfig::new(chain_spec.clone())
+            .with_unused_ports()
+            .with_rpc(RpcServerArgs::default().with_unused_ports().with_http());
+
+        let NodeHandle { node, node_exit_future: _ } = NodeBuilder::new(node_config)
+            .testing_node(executor.clone())
+            .with_types::<BerachainNode>()
+            .with_components(BerachainNode::default().components_builder())
+            .with_add_ons(add_ons)
+            .launch()
+            .await?;
+
+        let evm_config = BerachainEvmConfig::new_with_evm_factory(
+            chain_spec.clone(),
+            BerachainEvmFactory::default(),
+        );
+        let provider = node.provider().clone();
+
+        let (fb_tx, fb_rx) = tokio::sync::mpsc::channel::<BerachainFlashblockPayload>(128);
+        let stream = MockFlashblockStream { rx: fb_rx };
+
+        let service =
+            FlashBlockService::new(stream, evm_config, provider.clone(), executor.clone(), false);
+
+        let mut service_in_progress_rx = service.subscribe_in_progress();
+
+        executor.spawn_critical(
+            "flashblock-service",
+            Box::pin(async move {
+                service.run(pending_tx).await;
+            }),
+        );
+
+        let latest = node.provider().latest_header()?.expect("should have genesis");
+        let latest_hash = latest.hash();
+        let next_block = latest.number() + 1;
+        let next_timestamp = latest.timestamp() + 2;
+
+        let signer = test_signer()?;
+        let chain_id = chain_spec.chain_id();
+        let tx = TransactionTestContext::transfer_tx(chain_id, signer).await;
+        let tx_bytes = Bytes::from(tx.encoded_2718());
+        let tx_hash = *tx.tx_hash();
+
+        let payload_id = PayloadId::new([1u8; 8]);
+
+        let mut fb0 = create_test_flashblock_for_parent(
+            0,
+            next_block,
+            payload_id,
+            latest_hash,
+            next_timestamp,
+        );
+        fb0.diff.transactions = vec![tx_bytes];
+        fb0.diff.gas_used = 21000;
+
+        fb_tx.send(fb0).await?;
+
+        tokio::time::timeout(Duration::from_millis(500), service_in_progress_rx.changed())
+            .await??;
+        in_progress_tx.send(service_in_progress_rx.borrow().clone())?;
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let rpc_url = format!(
+            "http://127.0.0.1:{}",
+            node.rpc_server_handle().http_local_addr().unwrap().port()
+        );
+        let rpc_client = alloy_provider::ProviderBuilder::new().connect(&rpc_url).await?;
+
+        let receipt = rpc_client.get_transaction_receipt(tx_hash).await?;
+
+        assert!(
+            receipt.is_some(),
+            "Transaction receipt should be available from flashblock pending state"
+        );
+
+        let receipt = receipt.unwrap();
+        assert_eq!(receipt.transaction_hash, tx_hash);
+
+        Ok(())
+    }
+}

@@ -335,7 +335,7 @@ pub struct BerachainApi<N: RpcNodeCore, Rpc: RpcConvert> {
     /// Flashblocks listeners.
     ///
     /// If set, provides receivers for pending blocks, flashblock sequences, and build status.
-    pub flashblocks: Arc<Option<FlashblocksListeners<N::Primitives, BerachainFlashblockPayload>>>,
+    pub flashblocks: Option<Arc<FlashblocksListeners<N::Primitives, BerachainFlashblockPayload>>>,
 }
 
 /// Maximum duration to wait for a fresh flashblock when one is being built.
@@ -344,7 +344,7 @@ const MAX_FLASHBLOCK_WAIT_DURATION: Duration = Duration::from_millis(50);
 impl<N: RpcNodeCore, Rpc: RpcConvert> BerachainApi<N, Rpc> {
     /// Returns information about the flashblock currently being built, if any.
     fn flashblock_build_info(&self) -> Option<FlashBlockBuildInfo> {
-        self.flashblocks.as_ref().as_ref().and_then(|f| *f.in_progress_rx.borrow())
+        self.flashblocks.as_ref().and_then(|f| *f.in_progress_rx.borrow())
     }
 
     /// Extracts pending block if it matches the expected parent hash.
