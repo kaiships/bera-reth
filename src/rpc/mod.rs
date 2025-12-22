@@ -48,16 +48,46 @@ use tokio::sync::watch;
 use tracing::info;
 
 /// Builds `BerachainEthApi` for Berachain.
-#[derive(Debug)]
 pub struct BerachainEthApiBuilder {
     /// A URL pointing to a secure websocket connection (wss) that streams out flashblocks.
     flashblocks_url: Option<Url>,
+    /// Pre-built flashblocks listeners (for testing/dependency injection).
+    flashblocks_listeners:
+        Option<FlashblocksListeners<BerachainPrimitives, BerachainFlashblockPayload>>,
+}
+
+impl std::fmt::Debug for BerachainEthApiBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BerachainEthApiBuilder")
+            .field("flashblocks_url", &self.flashblocks_url)
+            .field("has_flashblocks_listeners", &self.flashblocks_listeners.is_some())
+            .finish()
+    }
 }
 
 impl Default for BerachainEthApiBuilder {
     fn default() -> Self {
-        // TODO: hardcode value here
-        Self { flashblocks_url: None }
+        Self { flashblocks_url: None, flashblocks_listeners: None }
+    }
+}
+
+impl BerachainEthApiBuilder {
+    /// Configure flashblocks with a WebSocket URL.
+    pub fn with_flashblocks_url(mut self, url: Option<Url>) -> Self {
+        self.flashblocks_url = url;
+        self
+    }
+
+    /// Configure flashblocks with pre-built listeners.
+    ///
+    /// This is primarily useful for testing, where you can build `FlashblocksListeners`
+    /// from a custom stream source instead of connecting to a real WebSocket server.
+    pub fn with_flashblocks_listeners(
+        mut self,
+        listeners: FlashblocksListeners<BerachainPrimitives, BerachainFlashblockPayload>,
+    ) -> Self {
+        self.flashblocks_listeners = Some(listeners);
+        self
     }
 }
 
@@ -105,7 +135,10 @@ where
             BerachainEthReceiptConverter::new(ctx.components.provider().clone().chain_spec()),
         );
 
-        let flashblocks = if let Some(ws_url) = self.flashblocks_url {
+        let flashblocks = if let Some(listeners) = self.flashblocks_listeners {
+            info!(target: "bera-reth:rpc", "Using pre-built flashblocks listeners");
+            Some(listeners)
+        } else if let Some(ws_url) = self.flashblocks_url {
             info!(target: "bera-reth:rpc", %ws_url, "Launching flashblocks service");
 
             let (tx, pending_rx) = watch::channel(None);
