@@ -1500,6 +1500,7 @@ dependencies = [
  "reth-rpc-engine-api",
  "reth-rpc-eth-api",
  "reth-rpc-eth-types",
+ "reth-storage-api",
  "reth-transaction-pool",
  "revm-context-interface",
  "revm-inspectors",
