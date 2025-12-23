@@ -20,7 +20,6 @@ use crate::{
     engine::payload::{
         BerachainBuiltPayload, BerachainPayloadAttributes, BerachainPayloadBuilderAttributes,
     },
-    flashblocks::BerachainFlashblockPayload,
     hardforks::BerachainHardforks,
     node::evm::error::BerachainExecutionError,
     primitives::header::BlsPublicKey,
@@ -40,7 +39,6 @@ use reth::{
     api::{BuiltPayload, EngineTypes, NodePrimitives, PayloadTypes},
     core::primitives::SealedBlock,
 };
-use reth_optimism_flashblocks::FlashBlockCompleteSequence;
 use reth_payload_primitives::ExecutionPayload as ExecutionPayloadTrait;
 use std::hash::Hash;
 
@@ -269,16 +267,6 @@ impl From<ExecutionPayloadV1> for BerachainExecutionData {
 impl From<ExecutionPayloadInputV2> for BerachainExecutionData {
     fn from(payload: ExecutionPayloadInputV2) -> Self {
         Self { payload: payload.into_payload(), sidecar: BerachainExecutionPayloadSidecar::none() }
-    }
-}
-
-impl TryFrom<&FlashBlockCompleteSequence<BerachainFlashblockPayload>> for BerachainExecutionData {
-    type Error = &'static str;
-
-    fn try_from(
-        _sequence: &FlashBlockCompleteSequence<BerachainFlashblockPayload>,
-    ) -> Result<Self, Self::Error> {
-        todo!("implement conversion from FlashBlockCompleteSequence to BerachainExecutionData")
     }
 }
 

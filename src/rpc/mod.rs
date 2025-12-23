@@ -38,9 +38,7 @@ use reth_node_builder::rpc::{
     EthApiBuilder, EthApiCtx, PayloadValidatorBuilder, RethRpcAddOns, RethRpcMiddleware, RpcAddOns,
     RpcHandle,
 };
-use reth_optimism_flashblocks::{
-    FlashBlockCompleteSequence, FlashBlockService, FlashblocksListeners, WsFlashBlockStream,
-};
+use reth_optimism_flashblocks::{FlashBlockService, FlashblocksListeners, WsFlashBlockStream};
 use reth_optimism_rpc::OpRpcTypes;
 use reth_rpc_convert::{RpcConvert, RpcConverter};
 use reth_rpc_eth_api::helpers::pending_block::BuildPendingEnv;
@@ -109,12 +107,6 @@ where
             Types: NodeTypes<
                 ChainSpec: EthereumHardforks + Hardforks,
                 Primitives = BerachainPrimitives,
-                Payload: reth_node_api::PayloadTypes<
-                    ExecutionData: for<'a> TryFrom<
-                        &'a FlashBlockCompleteSequence<BerachainFlashblockPayload>,
-                        Error: std::fmt::Display,
-                    >,
-                >,
             >,
             Evm: ConfigureEvm<
                 NextBlockEnvCtx: BuildPendingEnv<HeaderTy<N::Types>>

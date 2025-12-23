@@ -163,12 +163,10 @@ impl FlashblockPayload for BerachainFlashblockPayload {
         use alloy_consensus::transaction::SignerRecoverable;
         use alloy_eips::Decodable2718;
 
-        self.diff.transactions.clone().into_iter().map(|encoded| {
-            let tx = BerachainTxEnvelope::decode_2718(&mut encoded.as_ref())
+        self.diff.transactions.clone().into_iter().map(|raw| {
+            let tx = BerachainTxEnvelope::decode_2718(&mut raw.as_ref())
                 .map_err(RecoveryError::from_source)?;
-            let signer = tx.recover_signer()?;
-            let recovered = Recovered::new_unchecked(tx, signer);
-            Ok(WithEncoded::new(encoded, recovered))
+            tx.try_into_recovered().map(|tx| tx.into_encoded_with(raw.clone()))
         })
     }
 }

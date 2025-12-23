@@ -154,8 +154,8 @@ impl BerachainTestFlashBlockBuilder {
             base,
             diff: BerachainFlashblockPayloadDiff {
                 block_hash: B256::random(),
-                state_root: B256::ZERO,
-                receipts_root: B256::ZERO,
+                state_root: B256::random(),
+                receipts_root: B256::random(),
                 logs_bloom: Bloom::default(),
                 gas_used: 0,
                 transactions: self.transactions,
