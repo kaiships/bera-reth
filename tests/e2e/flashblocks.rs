@@ -507,7 +507,7 @@ mod service_integration_tests {
         fb_tx.send(fb0).await?;
 
         in_progress_rx.changed().await?;
-        let build_info = in_progress_rx.borrow().clone();
+        let build_info = *in_progress_rx.borrow();
 
         if let Some(info) = build_info {
             assert_eq!(info.block_number, next_block);
@@ -658,7 +658,7 @@ mod service_integration_tests {
         let block_txs = &block.body().transactions;
 
         assert!(
-            block_txs.len() >= 1,
+            !block_txs.is_empty(),
             "Block should contain at least 1 transaction, got {}",
             block_txs.len()
         );
@@ -1044,7 +1044,7 @@ mod rpc_integration_tests {
 
         tokio::time::timeout(Duration::from_millis(500), service_in_progress_rx.changed())
             .await??;
-        in_progress_tx.send(service_in_progress_rx.borrow().clone())?;
+        in_progress_tx.send(*service_in_progress_rx.borrow())?;
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
