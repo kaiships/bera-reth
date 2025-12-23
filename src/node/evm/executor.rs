@@ -238,7 +238,12 @@ where
 
         // append gas used
         self.gas_used += gas_used;
-        self.blob_gas_used += tx.tx().blob_gas_used().unwrap_or(0);
+
+        // only determine cancun fields when active
+        if self.spec.is_cancun_active_at_timestamp(self.evm.block().timestamp().saturating_to()) {
+            let tx_blob_gas_used = tx.tx().blob_gas_used().unwrap_or_default();
+            self.blob_gas_used = self.blob_gas_used.saturating_add(tx_blob_gas_used);
+        }
 
         // Push transaction changeset and calculate header bloom filter for receipt.
         self.receipts.push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
