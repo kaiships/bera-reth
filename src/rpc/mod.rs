@@ -133,6 +133,13 @@ where
     type EthApi = BerachainApi<N, BerachainEthRpcConverterFor<N>>;
 
     async fn build_eth_api(self, ctx: EthApiCtx<'_, N>) -> eyre::Result<Self::EthApi> {
+        if self.flashblocks_listeners.is_some() && self.flashblocks_url.is_some() {
+            return Err(eyre::eyre!(
+                "Cannot configure both flashblocks_listeners and flashblocks_url. \
+                 Use flashblocks_listeners for testing or flashblocks_url for production."
+            ));
+        }
+
         let tx_resp_builder = BerachainEthRpcConverterFor::<N>::new(
             BerachainEthReceiptConverter::new(ctx.components.provider().clone().chain_spec()),
         );
