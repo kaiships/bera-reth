@@ -46,7 +46,7 @@ use tokio::sync::watch;
 use tracing::info;
 
 /// Builds `BerachainEthApi` for Berachain.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct BerachainEthApiBuilder {
     /// A URL pointing to a secure websocket connection (wss) that streams out flashblocks.
     flashblocks_url: Option<Url>,
@@ -62,12 +62,6 @@ impl std::fmt::Debug for BerachainEthApiBuilder {
             .field("flashblocks_url", &self.flashblocks_url)
             .field("has_flashblocks_listeners", &self.flashblocks_listeners.is_some())
             .finish()
-    }
-}
-
-impl Default for BerachainEthApiBuilder {
-    fn default() -> Self {
-        Self { flashblocks_url: None, flashblocks_listeners: None }
     }
 }
 
