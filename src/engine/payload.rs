@@ -204,7 +204,7 @@ impl BerachainBuiltPayload {
             BlobSidecars::Empty => BlobsBundleV1::empty(),
             BlobSidecars::Eip4844(sidecars) => BlobsBundleV1::from(sidecars),
             BlobSidecars::Eip7594(_) => {
-                return Err(BuiltPayloadConversionError::UnexpectedEip7594Sidecars)
+                return Err(BuiltPayloadConversionError::UnexpectedEip7594Sidecars);
             }
         };
 

@@ -6,9 +6,7 @@ use crate::{
     primitives::{BerachainBlock, BerachainHeader},
     transaction::{BerachainTxEnvelope, BerachainTxType, pol::create_pol_transaction},
 };
-use alloy_consensus::{
-    Block, BlockBody, BlockHeader, EMPTY_OMMER_ROOT_HASH, TxReceipt, proofs,
-};
+use alloy_consensus::{Block, BlockBody, BlockHeader, EMPTY_OMMER_ROOT_HASH, TxReceipt, proofs};
 use alloy_eips::merge::BEACON_NONCE;
 use alloy_primitives::{Bytes, logs_bloom};
 use reth::{
