@@ -6,12 +6,12 @@ use crate::{
     primitives::{BerachainBlock, BerachainHeader},
     transaction::{BerachainTxEnvelope, BerachainTxType, pol::create_pol_transaction},
 };
-use alloy_consensus::{
-    Block, BlockBody, BlockHeader, EMPTY_OMMER_ROOT_HASH, Transaction, TxReceipt, proofs,
-};
+use alloy_consensus::{Block, BlockBody, BlockHeader, EMPTY_OMMER_ROOT_HASH, TxReceipt, proofs};
 use alloy_eips::merge::BEACON_NONCE;
 use alloy_primitives::{Bytes, logs_bloom};
-use reth::{chainspec::EthereumHardforks, providers::BlockExecutionResult};
+use reth::{
+    chainspec::EthereumHardforks, providers::BlockExecutionResult, revm::context::Block as _,
+};
 use reth_chainspec::EthChainSpec;
 use reth_ethereum_primitives::Receipt;
 use reth_evm::{
@@ -54,12 +54,12 @@ where
             execution_ctx: ctx,
             parent,
             mut transactions,
-            output: BlockExecutionResult { receipts, requests, gas_used },
+            output: BlockExecutionResult { receipts, requests, gas_used, blob_gas_used },
             state_root,
             ..
         } = input;
 
-        let timestamp = evm_env.block_env.timestamp.saturating_to();
+        let timestamp = evm_env.block_env.timestamp().saturating_to();
 
         // Validate proposer pubkey presence for Prague1
         validate_proposer_pubkey_prague1(&*self.chain_spec, timestamp, ctx.prev_proposer_pubkey)?;
@@ -69,11 +69,11 @@ where
             let prev_proposer_pubkey = ctx.prev_proposer_pubkey.unwrap();
 
             // Synthesize POL transaction and prepend to transactions list
-            let base_fee = evm_env.block_env.basefee;
+            let base_fee = evm_env.block_env.basefee();
             let pol_transaction = create_pol_transaction(
                 self.chain_spec.clone(),
                 prev_proposer_pubkey,
-                evm_env.block_env.number,
+                evm_env.block_env.number(),
                 base_fee,
             )?;
 
@@ -111,12 +111,11 @@ where
             .then(|| requests.requests_hash());
 
         let mut excess_blob_gas = None;
-        let mut blob_gas_used = None;
+        let mut block_blob_gas_used = None;
 
         // only determine cancun fields when active
         if self.chain_spec.is_cancun_active_at_timestamp(timestamp) {
-            blob_gas_used =
-                Some(transactions.iter().map(|tx| tx.blob_gas_used().unwrap_or_default()).sum());
+            block_blob_gas_used = Some(*blob_gas_used);
             excess_blob_gas = if self.chain_spec.is_cancun_active_at_timestamp(parent.timestamp) {
                 parent.maybe_next_block_excess_blob_gas(
                     self.chain_spec.blob_params_at_timestamp(timestamp),
@@ -134,23 +133,23 @@ where
         let header = BerachainHeader {
             parent_hash: ctx.parent_hash,
             ommers_hash: EMPTY_OMMER_ROOT_HASH,
-            beneficiary: evm_env.block_env.beneficiary,
+            beneficiary: evm_env.block_env.beneficiary(),
             state_root,
             transactions_root,
             receipts_root,
             withdrawals_root,
             logs_bloom,
             timestamp,
-            mix_hash: evm_env.block_env.prevrandao.unwrap_or_default(),
+            mix_hash: evm_env.block_env.prevrandao().unwrap_or_default(),
             nonce: BEACON_NONCE.into(),
-            base_fee_per_gas: Some(evm_env.block_env.basefee),
-            number: evm_env.block_env.number.saturating_to(),
-            gas_limit: evm_env.block_env.gas_limit,
-            difficulty: evm_env.block_env.difficulty,
+            base_fee_per_gas: Some(evm_env.block_env.basefee()),
+            number: evm_env.block_env.number().saturating_to(),
+            gas_limit: evm_env.block_env.gas_limit(),
+            difficulty: evm_env.block_env.difficulty(),
             gas_used: *gas_used,
             extra_data: self.extra_data.clone(),
             parent_beacon_block_root: ctx.parent_beacon_block_root,
-            blob_gas_used,
+            blob_gas_used: block_blob_gas_used,
             excess_blob_gas,
             requests_hash,
             prev_proposer_pubkey: ctx.prev_proposer_pubkey,

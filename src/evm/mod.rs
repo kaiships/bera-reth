@@ -191,6 +191,7 @@ where
     type Spec = SpecId;
     type Precompiles = PRECOMPILE;
     type Inspector = I;
+    type BlockEnv = BlockEnv;
 
     fn block(&self) -> &BlockEnv {
         &self.block
@@ -280,6 +281,7 @@ impl EvmFactory for BerachainEvmFactory {
     type HaltReason = HaltReason;
     type Spec = SpecId;
     type Precompiles = PrecompilesMap;
+    type BlockEnv = BlockEnv;
 
     fn create_evm<DB: Database>(&self, db: DB, input: EvmEnv) -> Self::Evm<DB, NoOpInspector> {
         BerachainEvmBuilder::new(db, input).build()

@@ -219,8 +219,8 @@ where
 
     debug!(target: "payload_builder", id=%attributes.id, parent_header = ?parent_header.hash(), parent_number = parent_header.number, "building new payload");
     let mut cumulative_gas_used = 0;
-    let block_gas_limit: u64 = builder.evm_mut().block().gas_limit;
-    let base_fee = builder.evm_mut().block().basefee;
+    let block_gas_limit: u64 = builder.evm_mut().block().gas_limit();
+    let base_fee = builder.evm_mut().block().basefee();
 
     let mut best_txs = best_txs(BestTransactionsAttributes::new(
         base_fee,
@@ -251,7 +251,7 @@ where
         warn!(target: "payload_builder", "Prague3 is active, building payload without transactions is not supported");
         return Err(PayloadBuilderError::Other(Box::from(
             "Prague 3 block building is not supported",
-        )))
+        )));
     }
     // Skip all transactions and proceed to finalize the empty block
     while let Some(pool_tx) = best_txs.next() {
@@ -264,12 +264,12 @@ where
                 &pool_tx,
                 InvalidPoolTransactionError::ExceedsGasLimit(pool_tx.gas_limit(), block_gas_limit),
             );
-            continue
+            continue;
         }
 
         // check if the job was cancelled, if so we can exit early
         if cancel.is_cancelled() {
-            return Ok(BuildOutcome::Cancelled)
+            return Ok(BuildOutcome::Cancelled);
         }
 
         // convert tx to a signed transaction
@@ -283,10 +283,10 @@ where
         if is_osaka && estimated_block_size_with_tx > MAX_RLP_BLOCK_SIZE {
             best_txs.mark_invalid(
                 &pool_tx,
-                InvalidPoolTransactionError::OversizedData(
-                    estimated_block_size_with_tx,
-                    MAX_RLP_BLOCK_SIZE,
-                ),
+                InvalidPoolTransactionError::OversizedData {
+                    size: estimated_block_size_with_tx,
+                    limit: MAX_RLP_BLOCK_SIZE,
+                },
             );
             continue;
         }
@@ -312,14 +312,14 @@ where
                         },
                     ),
                 );
-                continue
+                continue;
             }
 
             let blob_sidecar_result = 'sidecar: {
                 let Some(sidecar) =
                     pool.get_blob(*tx.hash()).map_err(PayloadBuilderError::other)?
                 else {
-                    break 'sidecar Err(Eip4844PoolTransactionError::MissingEip4844BlobSidecar)
+                    break 'sidecar Err(Eip4844PoolTransactionError::MissingEip4844BlobSidecar);
                 };
 
                 if is_osaka {
@@ -339,7 +339,7 @@ where
                 Ok(sidecar) => Some(sidecar),
                 Err(error) => {
                     best_txs.mark_invalid(&pool_tx, InvalidPoolTransactionError::Eip4844(error));
-                    continue
+                    continue;
                 }
             };
         }
@@ -364,7 +364,7 @@ where
                         ),
                     );
                 }
-                continue
+                continue;
             }
             // this is an error that we should treat as fatal for this attempt
             Err(err) => return Err(PayloadBuilderError::evm(err)),
@@ -399,7 +399,7 @@ where
         // Release db
         drop(builder);
         // can skip building the block
-        return Ok(BuildOutcome::Aborted { fees: total_fees, cached_reads })
+        return Ok(BuildOutcome::Aborted { fees: total_fees, cached_reads });
     }
 
     let BlockBuilderOutcome { execution_result, block, .. } = builder.finish(&state_provider)?;

@@ -17,7 +17,10 @@ use reth::{
     providers::BlockExecutionResult,
     revm::{
         DatabaseCommit, Inspector, State,
-        context::result::{ExecutionResult, Output, ResultAndState, SuccessReason},
+        context::{
+            Block as _,
+            result::{ExecutionResult, Output, ResultAndState, SuccessReason},
+        },
     },
 };
 use reth_evm::{
@@ -52,6 +55,8 @@ pub struct BerachainBlockExecutor<'a, Evm> {
     receipts: Vec<<BerachainReceiptBuilder as ReceiptBuilder>::Receipt>,
     /// Total gas used by transactions in this block.
     gas_used: u64,
+    /// Total blob gas used by blob transactions in this block.
+    blob_gas_used: u64,
 }
 
 impl<'a, Evm> BerachainBlockExecutor<'a, Evm> {
@@ -67,6 +72,7 @@ impl<'a, Evm> BerachainBlockExecutor<'a, Evm> {
             ctx,
             receipts: Vec::new(),
             gas_used: 0,
+            blob_gas_used: 0,
             system_caller: SystemCaller::new(spec.clone()),
             receipt_builder,
         }
@@ -78,7 +84,7 @@ impl<'a, Evm> BerachainBlockExecutor<'a, Evm> {
         Evm: reth_evm::Evm,
         <Evm as reth_evm::Evm>::DB: DatabaseCommit,
     {
-        let timestamp = self.evm.block().timestamp.saturating_to();
+        let timestamp = self.evm.block().timestamp().saturating_to();
 
         // Validate proposer pubkey presence for Prague1
         validate_proposer_pubkey_prague1(&*self.spec, timestamp, self.ctx.prev_proposer_pubkey)?;
@@ -92,11 +98,11 @@ impl<'a, Evm> BerachainBlockExecutor<'a, Evm> {
         let prev_proposer_pubkey = self.ctx.prev_proposer_pubkey.unwrap();
 
         // Use shared POL transaction creation logic
-        let base_fee = self.evm.block().basefee;
+        let base_fee = self.evm.block().basefee();
         let pol_envelope = create_pol_transaction(
             self.spec.clone(),
             prev_proposer_pubkey,
-            self.evm.block().number,
+            self.evm.block().number(),
             base_fee,
         )?;
         let (caller_address, calldata, pol_distributor_address) =
@@ -166,7 +172,7 @@ where
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
         let state_clear_flag =
-            self.spec.is_spurious_dragon_active_at_block(self.evm.block().number.saturating_to());
+            self.spec.is_spurious_dragon_active_at_block(self.evm.block().number().saturating_to());
         self.evm.db_mut().set_state_clear_flag(state_clear_flag);
 
         self.system_caller.apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
@@ -199,7 +205,7 @@ where
 
         // The sum of the transaction's gas limit, Tg, and the gas utilized in this block prior,
         // must be no greater than the block's gasLimit.
-        let block_available_gas = self.evm.block().gas_limit - self.gas_used;
+        let block_available_gas = self.evm.block().gas_limit() - self.gas_used;
 
         if tx.tx().gas_limit() > block_available_gas {
             return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
@@ -233,6 +239,12 @@ where
         // append gas used
         self.gas_used += gas_used;
 
+        // only determine cancun fields when active
+        if self.spec.is_cancun_active_at_timestamp(self.evm.block().timestamp().saturating_to()) {
+            let tx_blob_gas_used = tx.tx().blob_gas_used().unwrap_or_default();
+            self.blob_gas_used = self.blob_gas_used.saturating_add(tx_blob_gas_used);
+        }
+
         // Push transaction changeset and calculate header bloom filter for receipt.
         self.receipts.push(self.receipt_builder.build_receipt(ReceiptBuilderCtx {
             tx: tx.tx(),
@@ -256,7 +268,7 @@ where
     > {
         let requests = if self
             .spec
-            .is_prague_active_at_timestamp(self.evm.block().timestamp.saturating_to())
+            .is_prague_active_at_timestamp(self.evm.block().timestamp().saturating_to())
         {
             // Collect all EIP-6110 deposits
             let deposit_requests =
@@ -285,7 +297,7 @@ where
         if self
             .spec
             .ethereum_fork_activation(EthereumHardfork::Dao)
-            .transitions_at_block(self.evm.block().number.saturating_to())
+            .transitions_at_block(self.evm.block().number().saturating_to())
         {
             // drain balances from hardcoded addresses.
             let drained_balance: u128 = self
@@ -318,7 +330,12 @@ where
 
         Ok((
             self.evm,
-            BlockExecutionResult { receipts: self.receipts, requests, gas_used: self.gas_used },
+            BlockExecutionResult {
+                receipts: self.receipts,
+                requests,
+                gas_used: self.gas_used,
+                blob_gas_used: self.blob_gas_used,
+            },
         ))
     }
 
