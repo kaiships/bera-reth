@@ -133,7 +133,10 @@ fn maybe_enable_rip7212_p256verify_precompile(precompiles: &mut PrecompilesMap, 
 }
 
 fn is_berachain_chain_id(chain_id: u64) -> bool {
-    chain_id == NamedChain::Berachain as u64 || chain_id == NamedChain::BerachainBepolia as u64
+    chain_id == NamedChain::Berachain as u64
+        || chain_id == NamedChain::BerachainBepolia as u64
+        // beranode-cli devnet chain id
+        || chain_id == 80087
 }
 
 /// Berachain EVM implementation.
@@ -390,15 +393,18 @@ mod tests {
     fn test_rip7212_p256verify_precompile_enabled_for_berachain() {
         let p256_addr = address!("0x0000000000000000000000000000000000000100");
 
-        // Berachain chain_id should enable RIP-7212 precompile even before Osaka.
-        let mut cfg_env = CfgEnv::default();
-        cfg_env.spec = SpecId::CANCUN;
-        cfg_env.chain_id = NamedChain::Berachain as u64;
-        let env = EvmEnv { block_env: BlockEnv::default(), cfg_env };
-
         let factory = BerachainEvmFactory;
-        let mut evm = factory.create_evm(EmptyDB::default(), env);
-        assert!(evm.precompiles_mut().get(&p256_addr).is_some());
+
+        // Berachain chain_ids should enable RIP-7212 precompile even before Osaka.
+        for chain_id in [NamedChain::Berachain as u64, NamedChain::BerachainBepolia as u64, 80087] {
+            let mut cfg_env = CfgEnv::default();
+            cfg_env.spec = SpecId::CANCUN;
+            cfg_env.chain_id = chain_id;
+            let env = EvmEnv { block_env: BlockEnv::default(), cfg_env };
+
+            let mut evm = factory.create_evm(EmptyDB::default(), env);
+            assert!(evm.precompiles_mut().get(&p256_addr).is_some());
+        }
 
         // Non-Berachain chains should not expose the precompile at 0x100 pre-Osaka.
         let mut cfg_env = CfgEnv::default();
