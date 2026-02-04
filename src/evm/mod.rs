@@ -1,5 +1,6 @@
 use crate::transaction::POL_TX_TYPE;
 use alloy_primitives::{Address, Bytes, TxKind};
+use reth::chainspec::NamedChain;
 use reth::revm::{
     Context, ExecuteEvm, InspectEvm, InspectSystemCallEvm, Inspector, MainBuilder, MainContext,
     SystemCallEvm,
@@ -85,12 +86,15 @@ impl<DB: Database, I> BerachainEvmBuilder<DB, I> {
     where
         I: Inspector<EthEvmContext<DB>>,
     {
-        let precompiles = match self.precompiles {
+        let mut precompiles = match self.precompiles {
             Some(p) => p,
             None => PrecompilesMap::from_static(Precompiles::new(PrecompileSpecId::from_spec_id(
                 self.cfg_env.spec,
             ))),
         };
+
+        // Berachain custom precompiles.
+        maybe_enable_rip7212_p256verify_precompile(&mut precompiles, self.cfg_env.chain_id);
 
         let inner = Context::mainnet()
             .with_block(self.block_env)
@@ -101,6 +105,35 @@ impl<DB: Database, I> BerachainEvmBuilder<DB, I> {
 
         BerachainEvm { inner, inspect: self.inspect }
     }
+}
+
+/// Adds the RIP-7212 secp256r1 (P-256) signature verification precompile at `0x100`.
+///
+/// This enables passkey/WebAuthn signature verification from smart contracts.
+///
+/// Notes:
+/// - We only enable this for Berachain chain IDs.
+/// - We don't override a precompile already present at `0x100` (e.g. the Osaka-priced variant).
+fn maybe_enable_rip7212_p256verify_precompile(precompiles: &mut PrecompilesMap, chain_id: u64) {
+    if !is_berachain_chain_id(chain_id) {
+        return;
+    }
+
+    let p256_address = *reth::revm::precompile::secp256r1::P256VERIFY.address();
+    if precompiles.get(&p256_address).is_some() {
+        return;
+    }
+
+    precompiles.apply_precompile(&p256_address, |_| {
+        Some(reth_evm::precompiles::DynPrecompile::new(
+            reth::revm::precompile::PrecompileId::P256Verify,
+            |input| reth::revm::precompile::secp256r1::p256_verify(input.data, input.gas),
+        ))
+    });
+}
+
+fn is_berachain_chain_id(chain_id: u64) -> bool {
+    chain_id == NamedChain::Berachain as u64 || chain_id == NamedChain::BerachainBepolia as u64
 }
 
 /// Berachain EVM implementation.
@@ -351,6 +384,30 @@ mod tests {
                 "{name} precompile at {precompile_addr:?} should be available for later spec {later_spec:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_rip7212_p256verify_precompile_enabled_for_berachain() {
+        let p256_addr = address!("0x0000000000000000000000000000000000000100");
+
+        // Berachain chain_id should enable RIP-7212 precompile even before Osaka.
+        let mut cfg_env = CfgEnv::default();
+        cfg_env.spec = SpecId::CANCUN;
+        cfg_env.chain_id = NamedChain::Berachain as u64;
+        let env = EvmEnv { block_env: BlockEnv::default(), cfg_env };
+
+        let factory = BerachainEvmFactory;
+        let mut evm = factory.create_evm(EmptyDB::default(), env);
+        assert!(evm.precompiles_mut().get(&p256_addr).is_some());
+
+        // Non-Berachain chains should not expose the precompile at 0x100 pre-Osaka.
+        let mut cfg_env = CfgEnv::default();
+        cfg_env.spec = SpecId::CANCUN;
+        cfg_env.chain_id = 1;
+        let env = EvmEnv { block_env: BlockEnv::default(), cfg_env };
+
+        let mut evm = factory.create_evm(EmptyDB::default(), env);
+        assert!(evm.precompiles_mut().get(&p256_addr).is_none());
     }
 
     #[test]
