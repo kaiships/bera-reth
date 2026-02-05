@@ -93,7 +93,6 @@ impl<DB: Database, I> BerachainEvmBuilder<DB, I> {
             ))),
         };
 
-        // Berachain custom precompiles.
         maybe_enable_rip7212_p256verify_precompile(&mut precompiles, self.cfg_env.chain_id);
 
         let inner = Context::mainnet()
@@ -132,11 +131,13 @@ fn maybe_enable_rip7212_p256verify_precompile(precompiles: &mut PrecompilesMap, 
     });
 }
 
+/// Chain ID for beranode-cli devnet environment.
+const BERACHAIN_DEVNET_CHAIN_ID: u64 = 80087;
+
 fn is_berachain_chain_id(chain_id: u64) -> bool {
     chain_id == NamedChain::Berachain as u64
         || chain_id == NamedChain::BerachainBepolia as u64
-        // beranode-cli devnet chain id
-        || chain_id == 80087
+        || chain_id == BERACHAIN_DEVNET_CHAIN_ID
 }
 
 /// Berachain EVM implementation.
@@ -396,7 +397,7 @@ mod tests {
         let factory = BerachainEvmFactory;
 
         // Berachain chain_ids should enable RIP-7212 precompile even before Osaka.
-        for chain_id in [NamedChain::Berachain as u64, NamedChain::BerachainBepolia as u64, 80087] {
+        for chain_id in [NamedChain::Berachain as u64, NamedChain::BerachainBepolia as u64, BERACHAIN_DEVNET_CHAIN_ID] {
             let mut cfg_env = CfgEnv::default();
             cfg_env.spec = SpecId::CANCUN;
             cfg_env.chain_id = chain_id;
